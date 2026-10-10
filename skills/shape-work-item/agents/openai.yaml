@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/shape-work-item. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e.
+interface:
+  display_name: "Shape Work Item"
+  short_description: "Turn an idea into decision-ready GitHub work"
+  default_prompt: "Use $shape-work-item to turn this request into a focused GitHub issue."

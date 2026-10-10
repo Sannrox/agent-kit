@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/deliver-ready-issue. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e.
+interface:
+  display_name: "Deliver Ready Issue"
+  short_description: "Take a ready Issue through verified delivery"
+  default_prompt: "Use $deliver-ready-issue to deliver this ready GitHub Issue within the requested authority."

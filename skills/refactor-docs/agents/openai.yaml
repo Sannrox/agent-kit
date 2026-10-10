@@ -1,0 +1,8 @@
+# Canonical source: Sannrox/agent-kit skills/refactor-docs. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e.
+interface:
+  display_name: "Refactor Docs"
+  short_description: "Source-audited rewrite of an existing docs page without losing facts."
+  default_prompt: "Refactor the named docs page using source-audited preservation; keep, move, or delete each behavior fact explicitly."
+
+policy:
+  allow_implicit_invocation: true

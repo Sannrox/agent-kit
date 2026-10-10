@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/assess-change-impact. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e.
+interface:
+  display_name: "Assess Change Impact"
+  short_description: "Map change risk across project boundaries"
+  default_prompt: "Use $assess-change-impact to map the risks and required evidence for this change."
