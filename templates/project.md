@@ -1,6 +1,6 @@
 # Project profile for agent-kit skills
 
-<!-- Read by the shared skills in https://github.com/Sannrox/agent-kit (pinned in .agents/agent-kit.lock). Keep repo-specific facts here, not in the shared skills. Section headings are a contract: do not rename them. -->
+<!-- Read by the shared skills in https://github.com/Sannrox/agent-kit. Keep repo-specific facts here, not in the shared skills. Section headings are a contract: do not rename them. -->
 
 ## Project
 

@@ -40,7 +40,6 @@ for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax err
 # Self-test: render a fixture consumer from the templates and check it.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/.agents" "$tmp/scripts"
-sed -e 's/{{ref}}/v0.0.0-test/' -e 's/{{commit}}//' templates/agent-kit.lock > "$tmp/.agents/agent-kit.lock"
 cp templates/project.md "$tmp/.agents/project.md"
 printf '# Agents\n\nShared skills: Sannrox/agent-kit.\n\n## Parallel delivery lanes\n\nissue-lane.sh claim\n' > "$tmp/AGENTS.md"
 printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"; printf '/.worktrees/\n' > "$tmp/.gitignore"
@@ -49,5 +48,8 @@ bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 printf 'drift\n' >> "$tmp/.agents/skills/verify-change/SKILL.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: drifted stub was not detected"; fi
 mkdir -p "$tmp/.agents/skills/sekai-ontology" && cp skills/sekai-ontology/SKILL.md "$tmp/.agents/skills/sekai-ontology/"
-bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null 2>&1 && fail "self-test: vendored shared skill was not detected"
+cp -r skills/sekai-ontology/. "$tmp/.agents/skills/sekai-ontology/"
+if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: vendored shared skill was not detected"; fi
+bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
+bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 printf 'agent-kit validation passed\n'

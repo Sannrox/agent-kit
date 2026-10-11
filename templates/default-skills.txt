@@ -1,0 +1,9 @@
+advance-issue-frontier
+assess-change-impact
+capture-project-decision
+deliver-ready-issue
+prepare-release
+refactor-docs
+shape-work-item
+technical-documentation
+verify-change

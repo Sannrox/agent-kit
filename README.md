@@ -30,12 +30,12 @@ from the repository itself (`.agents/skills/<name>/SKILL.md`), so each consuming
 repository keeps a short **stub** with the same name and the full description
 (so the agent still selects it), whose body:
 
-1. links the canonical skill at the pinned tag
-   (`https://github.com/Sannrox/agent-kit/tree/<ref>/skills/<name>`);
+1. links the canonical skill on `main`
+   (`https://github.com/Sannrox/agent-kit/tree/main/skills/<name>`);
 2. tells the agent to read the installed copy at
-   `~/.agents/agent-kit/<ref>/skills/<name>/SKILL.md` (or `$AGENT_KIT_HOME/<ref>`);
-3. says how to install it when missing (`bash scripts/validate-workflow-skills.sh`
-   or a `git clone --depth 1 --branch <ref>`);
+   `~/.agents/agent-kit/skills/<name>/SKILL.md` (or `$AGENT_KIT_HOME`);
+3. says how to install or update it (`bash scripts/validate-workflow-skills.sh`,
+   or `git clone` / `git pull` of this repository);
 4. says repository rules in `AGENTS.md` and `.agents/project.md` apply too, and
    that shared fixes go upstream here.
 
@@ -46,7 +46,6 @@ Stubs are generated from `templates/stub-SKILL.md`; never edit them by hand.
 ```text
 AGENTS.md                      # repo policy; links Sannrox/agent-kit
 CLAUDE.md                      # points to AGENTS.md
-.agents/agent-kit.lock         # repo, ref (tag), commit, skills, scripts
 .agents/project.md             # repo-specific facts the shared skills read
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
@@ -54,7 +53,7 @@ scripts/gh-verified-push.sh        # vendored byte-for-byte (checked)
 scripts/validate-workflow-skills.sh # vendored byte-for-byte (checked)
 ```
 
-Start from `templates/agent-kit.lock` and `templates/project.md`, then run
+Start from `templates/project.md`, then run
 `bash scripts/validate-workflow-skills.sh --render` to write the stubs.
 
 ## `.agents/project.md` convention
@@ -67,22 +66,28 @@ Shared skills contain no product facts. Where a skill needs them it says
 
 ## Versioning and drift
 
-- Consumers pin a tag **and** its commit in `.agents/agent-kit.lock`; the check
-  refuses a checkout whose HEAD differs from the pinned commit.
-- `scripts/validate-workflow-skills.sh` (run in each consumer's CI) fails when a
-  stub differs from the rendered template at the pin, a pinned skill does not
-  exist at the pin, a shared skill is vendored or shadowed, a vendored script
-  drifted, or `.agents/project.md` lacks a contract heading.
-- To upgrade: change `ref` and `commit`, run `--render`, open a PR.
-- Breaking changes to skill names, the stub template or project.md headings
-  need a new minor version before `1.0`; record them in `CHANGELOG.md`.
+There is no pinning, exactly like OpenClaw: consumers always use the latest
+`main`. Tags may exist for history, but nothing references them.
+
+- `scripts/validate-workflow-skills.sh` (run in each consumer's CI) clones or
+  fast-forwards `~/.agents/agent-kit` to `main`, then fails when a default
+  skill (`templates/default-skills.txt`) has no stub, a stub differs from the
+  current template, a stub names a skill that no longer exists, a shared skill
+  is vendored, a vendored script (`templates/vendored-scripts.txt`) drifted, or
+  `.agents/project.md` / `AGENTS.md` lacks a required heading.
+- Because consumers track `main`, a change here to the stub template, the
+  vendored scripts, skill names or project.md headings turns consumer CI red
+  until they re-run `--render`. Treat those as breaking: announce them in
+  `CHANGELOG.md` and open the re-render PRs together with the change.
+- Opt-in skills (`sekai-ontology`) are added by creating
+  `.agents/skills/<name>/` and running `--render`.
 
 ## Offline and cloud agents
 
 A stub alone does not carry the workflow. Agents need either network access to
-clone the pinned tag or a pre-installed kit under `~/.agents/agent-kit/<ref>`.
+clone `main` or a pre-installed kit under `~/.agents/agent-kit`.
 Run `bash scripts/validate-workflow-skills.sh` in the environment's setup step
-so the kit is installed before the agent starts.
+so the kit is installed and current before the agent starts.
 
 ## Development
 

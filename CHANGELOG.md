@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Breaking: no pinning. Removed `templates/agent-kit.lock`; stubs link to
+  `tree/main` and read `~/.agents/agent-kit` (cloned or fast-forwarded by
+  `validate-workflow-skills.sh`). Default skills and vendored scripts are
+  listed in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
+
 ## v0.1.0
 
 ### Added
