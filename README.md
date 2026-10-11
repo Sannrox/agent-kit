@@ -36,7 +36,7 @@ repository keeps a short **stub** with the same name and the full description
    `~/.agents/agent-kit/skills/<name>/SKILL.md` (or `$AGENT_KIT_HOME`);
 3. says how to install or update it (`bash scripts/validate-workflow-skills.sh`,
    or `git clone` / `git pull` of this repository);
-4. says repository rules in `AGENTS.md` and `.agents/project.md` apply too, and
+4. says repository rules in `AGENTS.md` (including `## Agent skill profile`) apply too, and
    that shared fixes go upstream here.
 
 Stubs are generated from `templates/stub-SKILL.md`; never edit them by hand.
@@ -44,25 +44,38 @@ Stubs are generated from `templates/stub-SKILL.md`; never edit them by hand.
 ## Consuming repository layout
 
 ```text
-AGENTS.md                      # repo policy; links Sannrox/agent-kit
+AGENTS.md                      # repo policy; links Sannrox/agent-kit; ## Agent skill profile
 CLAUDE.md                      # points to AGENTS.md
-.agents/project.md             # repo-specific facts the shared skills read
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
 scripts/gh-verified-push.sh        # vendored byte-for-byte (checked)
 scripts/validate-workflow-skills.sh # vendored byte-for-byte (checked)
 ```
 
-Start from `templates/project.md`, then run
+Add the `## Agent skill profile` section (see `templates/agent-skill-profile.md`)
+to `AGENTS.md`, then run
 `bash scripts/validate-workflow-skills.sh --render` to write the stubs.
 
-## `.agents/project.md` convention
+## Repository facts live in `AGENTS.md`
 
-Shared skills contain no product facts. Where a skill needs them it says
-"see `## <Heading>` in `.agents/project.md`". The headings are a contract
-(checked in CI): `Project`, `Ownership boundaries`, `Affected areas`,
-`Shared surfaces`, `Impact boundaries`, `Compatibility and failure obligations`,
-`Evidence map`, `Verification matrix`, `Release audit`. See `templates/project.md`.
+Shared skills contain no product facts. They read them from the consuming
+repository's `AGENTS.md`:
+
+| Skill needs | AGENTS.md section |
+| --- | --- |
+| ownership and routing | `## Dependencies and Ownership` |
+| affected areas | `## Project Structure & Module Organization` |
+| shared / collision surfaces | `## Parallel delivery lanes` |
+| default test evidence | the testing guidance (`## Testing Guidelines`) |
+| what "feature" means | `Feature:` line in `## Agent skill profile` |
+| compatibility and failure obligations | `### Compatibility and failure obligations` |
+| extra verification rows | `### Verification matrix` |
+| release checklist | `### Release audit` |
+| impact boundaries not covered above | optional `### Additional impact boundaries` |
+
+`## Agent skill profile` holds only what the other sections do not already say
+(see `templates/agent-skill-profile.md`); its headings are a contract checked in
+CI. There is no `.agents/project.md`; the check fails if one exists.
 
 ## Versioning and drift
 
@@ -74,9 +87,9 @@ There is no pinning, exactly like OpenClaw: consumers always use the latest
   skill (`templates/default-skills.txt`) has no stub, a stub differs from the
   current template, a stub names a skill that no longer exists, a shared skill
   is vendored, a vendored script (`templates/vendored-scripts.txt`) drifted, or
-  `.agents/project.md` / `AGENTS.md` lacks a required heading.
+  `AGENTS.md` lacks a required heading, or `.agents/project.md` still exists.
 - Because consumers track `main`, a change here to the stub template, the
-  vendored scripts, skill names or project.md headings turns consumer CI red
+  vendored scripts, skill names or `## Agent skill profile` headings turns consumer CI red
   until they re-run `--render`. Treat those as breaking: announce them in
   `CHANGELOG.md` and open the re-render PRs together with the change.
 - Opt-in skills (`sekai-ontology`) are added by creating

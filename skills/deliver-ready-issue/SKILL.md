@@ -3,7 +3,7 @@ name: deliver-ready-issue
 description: Deliver a dependency-ready GitHub Issue through a bounded implementation workflow in an isolated worktree lane. Use when asked to implement, publish, or land a specific ready Issue, to take the next explicitly approved frontier item through verification and review, or to run several ready Issues as parallel lanes.
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/deliver-ready-issue. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/deliver-ready-issue. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Deliver Ready Issue
 
@@ -154,7 +154,7 @@ mark the Issue unless documented maintainer policy requires it.
    `git merge-base --is-ancestor origin/main HEAD`. If the check fails, refresh
    the branch onto `main` and rerun the affected checks. Otherwise refresh only
    for a failing gate, an explicit request, or a sibling lane that landed on a
-   shared surface (listed under `## Shared surfaces` in `.agents/project.md`). Do not rebase merely because `main` advanced.
+   shared surface (listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`). Do not rebase merely because `main` advanced.
 2. Publish to the claim branch with **GitHub-verified** commits via
    `bash scripts/gh-verified-push.sh` (GraphQL `createCommitOnBranch`), not a plain
    `git push`, unless the user explicitly asks for git-protocol push:

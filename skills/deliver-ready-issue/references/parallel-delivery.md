@@ -1,4 +1,4 @@
-<!-- Canonical source: Sannrox/agent-kit skills/deliver-ready-issue. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/deliver-ready-issue. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Parallel delivery lanes
 
@@ -32,7 +32,7 @@ stalled lane. It is not an orchestration-only role.
    implementation Pull Requests plus claim branches without one. Do not count
    assigned or planned work as a running lane, and do not start a lane for an
    Issue whose check says `claimed`.
-3. Reject candidate pairs that touch the same collision surface listed under `## Shared surfaces` in `.agents/project.md`. Run such Issues in sequence.
+3. Reject candidate pairs that touch the same collision surface listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`. Run such Issues in sequence.
 4. Resolve one authority ceiling for the run. Claiming needs Publish or Land,
    or an explicit claim authorization; without it the lanes are invisible to
    other machines and must be reported as such. Land authority still lands one

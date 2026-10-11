@@ -3,7 +3,7 @@ name: prepare-release
 description: Prepare a release by auditing version scope, compatibility, validation, artifacts, and release notes. Use when a maintainer asks for release readiness, a version bump plan, or a draft GitHub Release.
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/prepare-release. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/prepare-release. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Prepare Release
 
@@ -21,7 +21,7 @@ GitHub state unless the maintainer explicitly authorizes that action.
    represented once.
 3. Audit release impact:
    - workspace version and lockfile consistency;
-   - every item under `## Release audit` in `.agents/project.md`;
+   - every item under `### Release audit` under `## Agent skill profile` in `AGENTS.md`;
    - configuration additions, removals, and defaults;
    - packaging, rollback, and upgrade actions.
    Complete when every applicable item is resolved or a named blocker.

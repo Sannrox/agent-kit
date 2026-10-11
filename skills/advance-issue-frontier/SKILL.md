@@ -3,7 +3,7 @@ name: advance-issue-frontier
 description: Advance the GitHub Issue frontier after work merges or when asked what is ready next. Use to evaluate dependency-linked open Issues, detect Pull Request, claim-branch, and assignment claims across machines, update blocked or ready status, enforce active-lane limits, and recommend the next deliverable or parallel lane set without implementing it.
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/advance-issue-frontier. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/advance-issue-frontier. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Advance Issue Frontier
 
@@ -94,7 +94,7 @@ downstream-unblocking depth and then Issue number. Call this a deterministic
 presentation order, not project priority.
 
 Parallel candidates must not depend on each other or collide on a shared surface
-listed under `## Shared surfaces` in `.agents/project.md`. Read each candidate's affected boundary and scope;
+listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`. Read each candidate's affected boundary and scope;
 when two candidates name the same surface, present them as sequential, not
 parallel, and report the collision for maintainer judgment.
 

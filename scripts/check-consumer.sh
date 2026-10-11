@@ -10,7 +10,8 @@
 #   - any other .agents/skills/<name> that matches a kit skill (opt-in skills)
 #     is also a stub, never a vendored copy;
 #   - vendored scripts (templates/vendored-scripts.txt) are byte-identical to the kit;
-#   - .agents/project.md has every contract heading;
+#   - AGENTS.md has the ## Agent skill profile section with its contract
+#     headings (templates/agent-skill-profile.md); .agents/project.md is gone;
 #   - AGENTS.md references Sannrox/agent-kit and keeps the parallel-lane policy;
 #     CLAUDE.md points to AGENTS.md; .gitignore ignores /.worktrees/.
 # --render rewrites the default stubs, existing opt-in stubs and vendored scripts.
@@ -63,14 +64,12 @@ for f in $scripts; do
   cmp -s "${kit}/scripts/${f}" "${root}/scripts/${f}" || fail "scripts/${f} differs from agent-kit main (run --render)"
 done
 
-project="${root}/.agents/project.md"
-if [ -f "$project" ]; then
-  while IFS= read -r h; do
-    grep -Fqx "$h" "$project" || fail ".agents/project.md is missing heading: $h"
-  done < <(grep '^## ' "${kit}/templates/project.md")
-else
-  fail "missing .agents/project.md (start from templates/project.md)"
-fi
+[ ! -e "${root}/.agents/project.md" ] || fail ".agents/project.md is retired; fold its unique content into ## Agent skill profile in AGENTS.md"
+grep -Fqx "## Agent skill profile" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Agent skill profile (see templates/agent-skill-profile.md)"
+grep -q '^Feature: .' "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md ## Agent skill profile is missing the Feature: line"
+while IFS= read -r h; do
+  grep -Fqx "$h" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing heading: $h"
+done < <(grep '^### ' "${kit}/templates/agent-skill-profile.md")
 
 grep -Fq "Sannrox/agent-kit" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not reference Sannrox/agent-kit"
 grep -Fqx "## Parallel delivery lanes" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Parallel delivery lanes"

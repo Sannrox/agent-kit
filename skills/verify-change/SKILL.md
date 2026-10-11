@@ -3,7 +3,7 @@ name: verify-change
 description: Verify a Rust, documentation, configuration, or workflow change with proportionate deterministic checks. Use after implementation, before review, or when a contributor needs an exact evidence report without overstating unrun tests.
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/verify-change. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/verify-change. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Verify Change
 
@@ -20,7 +20,7 @@ Run the narrowest useful checks first, then expand according to change risk.
    | Surface | Required evidence |
    | --- | --- |
    | Rust source | focused tests plus the full local gates below |
-   | project-specific surfaces | every matching row under `## Verification matrix` in `.agents/project.md` |
+   | project-specific surfaces | the testing guidance in `AGENTS.md` plus every matching row under `### Verification matrix` in `## Agent skill profile` in `AGENTS.md` |
    | configuration | parsing/default tests and the docs that describe the setting |
    | docs/templates/Skills | links and commands where practical; `bash scripts/validate-workflow-skills.sh` |
 

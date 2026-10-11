@@ -7,7 +7,7 @@ metadata:
   adapted_from: "https://github.com/openclaw/openclaw/.agents/skills/technical-documentation"
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/technical-documentation. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/technical-documentation. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Technical Documentation
 

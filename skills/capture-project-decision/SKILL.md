@@ -3,7 +3,7 @@ name: capture-project-decision
 description: Capture an accepted design or project outcome in the smallest durable artifact. Use after a Discussion, Issue, or PR resolves a choice that may require an ADR, maintained documentation, example, or reusable Skill.
 ---
 
-<!-- Canonical source: Sannrox/agent-kit skills/capture-project-decision. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's .agents/project.md. -->
+<!-- Canonical source: Sannrox/agent-kit skills/capture-project-decision. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
 
 # Capture Project Decision
 

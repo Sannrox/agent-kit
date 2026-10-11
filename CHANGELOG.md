@@ -8,6 +8,10 @@
   `tree/main` and read `~/.agents/agent-kit` (cloned or fast-forwarded by
   `validate-workflow-skills.sh`). Default skills and vendored scripts are
   listed in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
+- Breaking: retired `.agents/project.md`. Skills read repository facts from the
+  consumer's `AGENTS.md`; only content not already there goes into a
+  `## Agent skill profile` section (`templates/agent-skill-profile.md`).
+  `check-consumer.sh` requires that section and fails if `.agents/project.md` exists.
 
 ## v0.1.0
 

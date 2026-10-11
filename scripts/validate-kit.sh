@@ -14,7 +14,7 @@ for f in skills/*/SKILL.md; do
   grep -q '^# ' "$f" || fail "$f has no title heading"
 done
 
-# Shared skills stay generic: product facts belong in the consumer's .agents/project.md.
+# Shared skills stay generic: product facts belong in the consumer's AGENTS.md.
 if grep -rIn -i -E '\b(kako|kekkai|mizuchi|hoshi|tenkai|rusui|mikura|aldunis)\b|shikigami GitHub|sekai-chisei (release|change|design)' \
   --exclude-dir=sekai-ontology skills; then
   fail "a shared skill names a specific product (see above)"
@@ -40,11 +40,13 @@ for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax err
 # Self-test: render a fixture consumer from the templates and check it.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/.agents" "$tmp/scripts"
-cp templates/project.md "$tmp/.agents/project.md"
-printf '# Agents\n\nShared skills: Sannrox/agent-kit.\n\n## Parallel delivery lanes\n\nissue-lane.sh claim\n' > "$tmp/AGENTS.md"
+{ printf '# Agents\n\nShared skills: Sannrox/agent-kit.\n\n## Parallel delivery lanes\n\nissue-lane.sh claim\n\n'; cat templates/agent-skill-profile.md; } > "$tmp/AGENTS.md"
 printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"; printf '/.worktrees/\n' > "$tmp/.gitignore"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
+touch "$tmp/.agents/project.md"
+if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: leftover .agents/project.md was not detected"; fi
+rm "$tmp/.agents/project.md"
 printf 'drift\n' >> "$tmp/.agents/skills/verify-change/SKILL.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: drifted stub was not detected"; fi
 mkdir -p "$tmp/.agents/skills/sekai-ontology" && cp skills/sekai-ontology/SKILL.md "$tmp/.agents/skills/sekai-ontology/"
