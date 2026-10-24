@@ -14,27 +14,19 @@ Run the narrowest useful checks first, then expand according to change risk.
 1. Inspect `git status`, the diff, and the stated outcome. Preserve unrelated
    worktree changes. Use `assess-change-impact` when risk is unclear. Complete
    when every changed path is classified.
-2. Run focused tests for the affected module or crate first. Add checks
+2. Run focused tests for the affected module first. Add checks
    based on the surface:
 
    | Surface | Required evidence |
    | --- | --- |
-   | Rust source | focused tests plus the full local gates below |
+   | source | focused tests plus the full local gates in `AGENTS.md` |
    | project-specific surfaces | the testing guidance in `AGENTS.md` plus every matching row under `### Verification matrix` in `## Agent skill profile` in `AGENTS.md` |
    | configuration | parsing/default tests and the docs that describe the setting |
-   | docs/templates/Skills | links and commands where practical; `bash scripts/validate-workflow-skills.sh` |
+   | docs/templates/Skills | links and commands where practical; the docs/skill check named in `AGENTS.md` |
 
 3. Before ship-level handoff, run the same gates as CI
    (`.github/workflows/ci.yml`) unless the user explicitly requested a
-   narrower check:
-
-   ```sh
-   cargo fmt --all -- --check
-   cargo build --locked --workspace --all-targets
-   cargo clippy --locked --workspace --all-targets -- -D warnings
-   cargo test --locked --workspace
-   bash scripts/validate-workflow-skills.sh
-   ```
+   narrower check. Copy the commands from `AGENTS.md`. Do not assume Cargo.
 
    CI is the source of truth for the command set; if it changes, follow it and
    update `AGENTS.md`. Complete when every applicable local gate has a result.

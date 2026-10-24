@@ -9,7 +9,8 @@
 #     (only SKILL.md, no vendored references or scripts);
 #   - any other .agents/skills/<name> that matches a kit skill (opt-in skills)
 #     is also a stub, never a vendored copy;
-#   - vendored scripts (templates/vendored-scripts.txt) are byte-identical to the kit;
+#   - vendored scripts (templates/vendored-scripts.txt) are byte-identical to the kit
+#     (validate-workflow-skills.sh; gh-verified-push.sh is optional and not listed);
 #   - AGENTS.md has the ## Agent skill profile section with its contract
 #     headings (templates/agent-skill-profile.md); .agents/project.md is gone;
 #   - AGENTS.md references Sannrox/agent-kit and keeps the parallel-lane policy;

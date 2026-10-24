@@ -25,7 +25,7 @@ stalled lane. It is not an orchestration-only role.
    ```sh
    gh pr list --state open --json number,headRefName,isDraft,updatedAt
    gh api repos/<owner>/<repo>/git/matching-refs/heads/ --paginate --jq '.[].ref'
-   bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh check <issue>
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>
    ```
 
    New lanes fit within the remaining capacity of the three-lane limit: open
@@ -47,7 +47,7 @@ The lead claims every lane on GitHub before any worker starts, so that workers
 on other machines and other leads see the lanes immediately:
 
 ```sh
-bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh claim <issue>
+bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
 ```
 
 The script prints the branch `<type>/<issue>`, the base SHA, and the assignee.
@@ -83,8 +83,8 @@ Lane brief
 - reserved by sibling lanes, do not touch: <surfaces or paths, or none>
 - procedure: run deliver-ready-issue from "3. Bound the implementation"
   onward inside the worktree; readiness, claim, and isolation are done.
-- publish only to the claim branch, with
-  bash scripts/gh-verified-push.sh --branch <type>/<issue> --sync-local; open the
+- publish only to the claim branch, with the path in AGENTS.md
+  (gh-verified-push.sh when named and present, otherwise git push); open the
   Pull Request as a draft with "Closes #<issue>" and public lane fields
   (branch, repo-relative worktree, base SHA, published SHA, authority). Do
   not paste this internal brief, hostnames, or absolute paths onto GitHub.
@@ -112,15 +112,14 @@ Lane brief
 4. A blocked lane is reported and its claim kept until the maintainer decides.
    Never repurpose its branch or worktree for another Issue. A lane abandoned
    before any commit is released with
-   `bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh release <issue>`.
+   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`.
 
 ## 4. Publish and land in sequence
 
-1. Each lane publishes to its claim branch from its own worktree with
-   `bash scripts/gh-verified-push.sh --branch <type>/<issue> --sync-local` under
-   Publish authority, after `git fetch --prune origin` and
-   `git merge-base --is-ancestor origin/main HEAD` pass. Publishing may happen
-   concurrently; landing never.
+1. Each lane publishes to its claim branch from its own worktree with the
+   path in `AGENTS.md` under Publish authority, after `git fetch --prune origin`
+   and `git merge-base --is-ancestor origin/main HEAD` pass. Publishing may
+   happen concurrently; landing never.
 2. Land one lane at a time under Land authority:
    `gh pr merge <pr> --squash --delete-branch --match-head-commit <verified-sha>`.
    A failed or timed-out merge response may still have merged; reconcile the

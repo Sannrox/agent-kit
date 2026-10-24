@@ -13,14 +13,14 @@ GitHub state unless the maintainer explicitly authorizes that action.
 ## Procedure
 
 1. Identify the target version, base tag, target commit, and milestone or merged
-   PR range. Read `Cargo.toml`, CI, and open release-blocking Issues. Complete
-   when the exact release contents are bounded.
+   PR range. Read the version source named in `AGENTS.md`, CI, and open
+   release-blocking Issues. Complete when the exact release contents are bounded.
 2. Classify changes as `Added`, `Changed`, `Fixed`, `Security`, or `Migration`.
    Check SemVer fit; before `1.0`, call out all public breaking changes even when
    they fit a minor bump. Complete when every user-visible merged change is
    represented once.
 3. Audit release impact:
-   - workspace version and lockfile consistency;
+   - version and lockfile consistency when the repository has them;
    - every item under `### Release audit` under `## Agent skill profile` in `AGENTS.md`;
    - configuration additions, removals, and defaults;
    - packaging, rollback, and upgrade actions.
