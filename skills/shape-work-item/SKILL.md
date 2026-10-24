@@ -12,8 +12,9 @@ explicitly authorizes publishing to GitHub.
 
 ## Procedure
 
-1. Read `AGENTS.md`, `README.md`, accepted ADRs under `docs/decisions/`, and the
-   matching form under `.github/ISSUE_TEMPLATE/`. Inspect affected code or docs
+1. Read `AGENTS.md`, `README.md`, accepted ADRs under `docs/decisions/` when
+   present, and the matching form under `.github/ISSUE_TEMPLATE/` when present.
+   Inspect affected code or docs
    when named. Complete when the request is framed against actual project
    boundaries (see `## Dependencies and Ownership` in `AGENTS.md`).
 2. Search open and closed Issues, Discussions, and PRs when GitHub access is

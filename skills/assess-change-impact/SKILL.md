@@ -12,7 +12,7 @@ Build an evidence-backed impact map before implementation or review.
 ## Procedure
 
 1. Read the linked Issue or request, `README.md`, accepted ADRs under
-   `docs/decisions/`, and the relevant code. For a diff, inspect every changed
+   `docs/decisions/` when present, and the relevant code. For a diff, inspect every changed
    file and its direct callers or implementors. Complete when the claimed
    outcome and actual change surface are both known.
 2. Trace applicable boundaries:

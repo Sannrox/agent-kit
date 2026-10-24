@@ -49,7 +49,7 @@ force-pushing protected branches, or weakening repository protections.
 4. Check the claim state on GitHub, the only state other machines share:
 
    ```sh
-   bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh check <issue>
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>
    ```
 
    It reports open Pull Requests referencing the Issue, claim branches
@@ -76,7 +76,7 @@ ambiguous. Report the smallest action that would unblock delivery.
    authority or an explicit claim authorization:
 
    ```sh
-   bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh claim <issue>
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
    ```
 
    The script derives `<type>` from the Issue, creates `<type>/<issue>` on
@@ -121,10 +121,8 @@ mark the Issue unless documented maintainer policy requires it.
 
 1. Add focused deterministic tests while implementing.
 2. Run `verify-change` and retain exact commands, results, skips, and remaining
-   uncertainty. At minimum for ship: `cargo fmt --all -- --check`, focused
-   tests plus `cargo test --locked --workspace`, and
-   `cargo clippy --locked --workspace --all-targets -- -D warnings`
-   (offline; no control plane required).
+   uncertainty. At minimum for ship: the local gates listed in `AGENTS.md`
+   (and the matching jobs in `.github/workflows/ci.yml`). Do not assume Cargo.
 3. Run **`autoreview` before committing** (or before push if already committed).
    Do **not** vendor the skill into this repo. Resolve the shared helper (env
    `AUTOREVIEW`, else agent-skills / `AGENTS_HOME` / shared install path—see
@@ -155,15 +153,18 @@ mark the Issue unless documented maintainer policy requires it.
    the branch onto `main` and rerun the affected checks. Otherwise refresh only
    for a failing gate, an explicit request, or a sibling lane that landed on a
    shared surface (listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`). Do not rebase merely because `main` advanced.
-2. Publish to the claim branch with **GitHub-verified** commits via
-   `bash scripts/gh-verified-push.sh` (GraphQL `createCommitOnBranch`), not a plain
-   `git push`, unless the user explicitly asks for git-protocol push:
+2. Publish to the claim branch using the path in `AGENTS.md` (`### Verified
+   commits on GitHub`). If that section names `scripts/gh-verified-push.sh`
+   and the file exists, use it (GraphQL `createCommitOnBranch`) so the hosted
+   commit is Verified:
    - Claim branch (already exists on GitHub):
      `bash scripts/gh-verified-push.sh --branch <type>/<issue> --sync-local`
    - A branch that does not exist yet (no claim was possible):
      `bash scripts/gh-verified-push.sh --create-branch-from origin/main --branch <type>/<issue> --sync-local`
    - Confirm the script reports `verification.verified=true` and that the
      hosted tree matches local `HEAD`.
+   Otherwise publish with `git push -u origin HEAD` (or `git push` if
+   upstream is already set) unless the user asked for a different path.
 3. Open the Pull Request as a draft with the first published commit, then mark
    it ready once verification and review are complete and `mergeable` is no
    longer `UNKNOWN` (`gh pr ready <pr>`). The Pull Request:
@@ -184,8 +185,8 @@ mark the Issue unless documented maintainer policy requires it.
 ### 6. Land when authorized
 
 1. Wait for required CI and review. Resolve actionable feedback in the same
-   branch and rerun affected checks. Re-publish review fixes with
-   `bash scripts/gh-verified-push.sh` so the PR tip stays Verified.
+   branch and rerun affected checks. Re-publish review fixes with the same
+   path as step 5.
 2. Recheck that dependencies and repository protections still permit landing.
    Land one lane at a time; wait for a sibling lane's merge to finish and
    recheck `mergeable` before starting yours.
@@ -210,7 +211,7 @@ mark the Issue unless documented maintainer policy requires it.
    with `gh pr view <pr> --json state,mergeCommit` before deleting. Leave the
    primary checkout untouched unless the user asks to synchronize it. A lane
    that is abandoned before publishing releases its claim with
-   `bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh release <issue>`,
+   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`,
    which refuses to delete a branch with
    commits or an open Pull Request unless told to.
 5. Invoke `advance-issue-frontier` in report-only mode unless the user also

@@ -44,7 +44,7 @@ Requests. Do not rely on a stale local backlog export.
    Map each branch `<type>/<issue>` or `*/<issue>-*` (including legacy
    `codex/<issue>-<slug>`) to its Issue number. For a candidate whose state
    matters, run
-   `bash .agents/skills/deliver-ready-issue/scripts/issue-lane.sh check <issue>`;
+   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>`;
    it resolves linked Pull Requests, claim branches, and the assignment age
    from the Issue timeline. Do not run `git fetch --prune` while another lane
    on this machine is mutating shared Git state; the GitHub reads above do not

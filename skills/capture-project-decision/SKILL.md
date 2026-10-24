@@ -25,11 +25,13 @@ Promote the durable result, not the conversation that produced it.
 3. Preserve one source of truth. Link to code/protocols rather than duplicating
    exhaustive details. Put rationale in the ADR and usage in docs. Complete when
    the same rule is not maintained in multiple prose locations.
-4. For an ADR, follow the template in `docs/decisions/README.md` (context,
-   decision, consequences, rejected alternatives), allocate the next number,
-   include the source links, and update the index in `docs/decisions/README.md`. Supersede by
-   adding a new ADR and cross-linking both; retain historical text. Complete
-   when status and relationships are explicit.
+4. For an ADR, follow the template in `docs/decisions/README.md` when that
+   directory exists (context, decision, consequences, rejected alternatives),
+   allocate the next number, include the source links, and update the index.
+   Supersede by adding a new ADR and cross-linking both; retain historical
+   text. Complete when status and relationships are explicit. If the repository
+   has no `docs/decisions/`, record the decision in the artifact `AGENTS.md`
+   names, or say no ADR path exists.
 5. Check links, examples, Skill metadata, and affected indexes. Complete when a
    future contributor can discover the result without the original prompt.
 

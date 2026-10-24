@@ -1,2 +1,1 @@
-gh-verified-push.sh
 validate-workflow-skills.sh

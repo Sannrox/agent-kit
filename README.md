@@ -19,8 +19,10 @@ hand-copying long `SKILL.md` files.
 | `verify-change` | yes | Proportionate verification with an exact evidence report |
 | `sekai-ontology` | opt-in | Sekai ontology CLI workflow, only for repos that work with the ontology |
 
-Shared scripts: `scripts/gh-verified-push.sh` (verified commits through the
-GitHub API) and `scripts/validate-workflow-skills.sh` (the consumer check).
+Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
+consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
+optional canonical publisher for GitHub-signed commits; consumers that still
+want it copy it, others publish with `git push`.
 
 ## The stub pattern
 
@@ -48,8 +50,8 @@ AGENTS.md                      # repo policy; links Sannrox/agent-kit; ## Agent 
 CLAUDE.md                      # points to AGENTS.md
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
-scripts/gh-verified-push.sh        # vendored byte-for-byte (checked)
 scripts/validate-workflow-skills.sh # vendored byte-for-byte (checked)
+scripts/gh-verified-push.sh        # optional; not a consumer check
 ```
 
 Add the `## Agent skill profile` section (see `templates/agent-skill-profile.md`)

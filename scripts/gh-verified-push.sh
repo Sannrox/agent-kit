@@ -26,7 +26,8 @@
 set -euo pipefail
 
 # Canonical source: Sannrox/agent-kit scripts/gh-verified-push.sh. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e.
-# Consuming repositories vendor this file byte-for-byte; scripts/validate-workflow-skills.sh checks it.
+# Optional. Consumers that still want GitHub-signed commits copy it; the
+# consumer check does not require it.
 
 usage() {
   sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
