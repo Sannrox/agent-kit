@@ -21,8 +21,9 @@ hand-copying long `SKILL.md` files.
 
 Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
 consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
-optional canonical publisher for GitHub-signed commits; consumers that still
-want it copy it, others publish with `git push`. It cannot carry file modes: a
+canonical publisher for GitHub-signed commits. Lanes run it from the kit
+through `issue-lane.sh push`, never from a copy; a repository that publishes
+with `git push` says so in `AGENTS.md`. It cannot carry file modes: a
 100755 file lands as 100644, and the script warns for each one. Run scripts
 through their interpreter (`sh`, `bash`, `python3`); checks never require the
 executable bit.
@@ -54,7 +55,6 @@ CLAUDE.md                      # points to AGENTS.md
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
 scripts/validate-workflow-skills.sh # vendored byte-for-byte (checked)
-scripts/gh-verified-push.sh        # optional; not a consumer check
 ```
 
 Add the `## Agent skill profile` section (see `templates/agent-skill-profile.md`)

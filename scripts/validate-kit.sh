@@ -77,4 +77,120 @@ printf '%s\n' "$out" | grep -q 'files changed: 3$' || fail "self-test: fixture s
 printf '%s\n' "$out" | grep -q '^Warning: new-exec.sh is 100755' || fail "self-test: no warning for added new-exec.sh: $out"
 printf '%s\n' "$out" | grep -q '^Warning: plain.sh is 100755' || fail "self-test: no warning for plain.sh made 100755: $out"
 if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test: modified old-exec.sh keeps 100755 and needs no warning: $out"; fi
+
+# Self-test: issue-lane.sh land against a fake gh. Each `gh pr view` serves the
+# next Pull Request snapshot (the last one repeats); mutations are recorded.
+land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$push" "$land"' EXIT
+mkdir -p "$land/bin"
+cat > "$land/bin/gh" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in
+  "repo view --json nameWithOwner"*) echo o/r ;;
+  "repo view --json defaultBranchRef"*) echo main ;;
+  "api user"*) echo me ;;
+  "issue view 7 --json state"*) cat "$FAKE/issue_state" ;;
+  "issue view 7 --json"*) echo '{"number":7,"title":"feat: x","state":"OPEN","labels":[],"assignees":[],"closedByPullRequestsReferences":[]}' ;;
+  "pr view 9 "*) head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
+  "pr merge"* | "api -X DELETE"* | "api -X PUT"*) echo "$*" >> "$FAKE/calls" ;;
+  "api repos/o/r/compare/"*) echo ahead ;;
+  "api repos/o/r/commits/"*) echo true ;;
+  *) echo "fake gh: unexpected $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$land/bin/gh"
+# The fake git serves the claim branch from branch_sha ("absent" for none,
+# "error" for a failed lookup), answers `remote get-url` from origin, and
+# records pushes; everything else goes to the real git.
+real_git="$(command -v git)"
+cat > "$land/bin/git" <<FAKE
+#!/usr/bin/env bash
+case "\$1" in
+  ls-remote) sha="\$(cat "\$FAKE/branch_sha")"; [ "\$sha" = absent ] && exit 2; [ "\$sha" = error ] && exit 128; printf '%s\trefs/heads/feat/7\n' "\$sha" ;;
+  push | fetch) echo "git \$*" >> "\$FAKE/calls" ;;
+  remote) cat "\$FAKE/origin"; case "\$*" in *--push*) [ -f "\$FAKE/push_origin" ] && cat "\$FAKE/push_origin" ;; esac; true ;;
+  *) exec "$real_git" "\$@" ;;
+esac
+FAKE
+chmod +x "$land/bin/git"
+H=1111111111111111111111111111111111111111
+snap() { # state head auto(true|false) checks merge-state
+  jq -cn --arg s "$1" --arg h "$2" --argjson a "$3" --argjson c "$4" --arg m "$5" \
+    '{number: 9, state: $s, isDraft: false, headRefName: "feat/7", headRefOid: $h, mergeStateStatus: $m,
+      isCrossRepository: false, baseRefName: (if $s == "BASE" then "release" else "main" end), autoMergeRequest: (if $a then {} else null end), statusCheckRollup: $c,
+      mergeCommit: (if $s == "MERGED" then {oid: "2222222222222222222222222222222222222222"} else null end),
+      closingIssuesReferences: [{number: 7}]}'
+}
+pending='[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]'
+red='[{"name":"ci","status":"COMPLETED","conclusion":"FAILURE"}]'
+lane() { # expected-exit dir args...
+  local code=0 want="$1" dir="$2"; shift 2
+  out="$(cd "$dir" && FAKE="$land" ISSUE_LANE_POLL_SECONDS=0 PATH="$land/bin:$PATH" \
+    bash "$ROOT/skills/deliver-ready-issue/scripts/issue-lane.sh" "$@" 2>&1)" || code=$?
+  [ "$code" = "$want" ] || fail "self-test: issue-lane $* exited $code, expected $want: $out"
+}
+run_land() { lane "$1" "$land" land 7 --pr 9 --head "$H" "${@:2}"; }
+: > "$land/calls"; echo CLOSED > "$land/issue_state"; echo "$H" > "$land/branch_sha"; echo git@github.com:o/r.git > "$land/origin"
+{ snap OPEN "$H" true "$pending" BLOCKED; snap OPEN "$H" false "$pending" BLOCKED; snap OPEN "$H" false '[]' CLEAN
+  snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
+run_land 0
+grep -q -- '--disable-auto' "$land/calls" || fail "self-test: land kept an auto-merge queued while watching"
+grep -qx "api -X PUT repos/o/r/pulls/9/merge -f merge_method=squash -f sha=$H" "$land/calls" \
+  || fail "self-test: land did not merge pinned to the reviewed head"
+if grep -q -- '--auto' "$land/calls"; then fail "self-test: land queued a GitHub auto-merge, which later pushes can outlive"; fi
+grep -qx "git push --quiet --force-with-lease=refs/heads/feat/7:$H origin :refs/heads/feat/7" "$land/calls" \
+  || fail "self-test: land did not delete the claim branch under a lease on the merged head"
+printf '%s\n' "$out" | grep -q '"verdict": "merged"' || fail "self-test: land did not report the merge: $out"
+: > "$land/calls"
+snap OPEN 3333333333333333333333333333333333333333 true "$pending" BLOCKED > "$land/seq"
+run_land 4
+grep -q -- '--disable-auto' "$land/calls" || fail "self-test: land did not withdraw auto-merge for a moved head"
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged an unreviewed head"; fi
+: > "$land/calls"
+{ snap OPEN "$H" false "$pending" BLOCKED; snap OPEN "$H" false "$red" BLOCKED; } > "$land/seq"
+run_land 5
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged after a failed check"; fi
+: > "$land/calls"; echo OPEN > "$land/issue_state"
+snap MERGED "$H" false '[]' MERGED > "$land/seq"
+run_land 7
+if grep -q 'git push' "$land/calls"; then fail "self-test: land deleted the claim branch before the Issue closed"; fi
+: > "$land/calls"; echo CLOSED > "$land/issue_state"; echo 4444444444444444444444444444444444444444 > "$land/branch_sha"
+run_land 7
+if grep -q 'git push' "$land/calls"; then fail "self-test: land deleted a claim branch that moved past the merged head"; fi
+echo absent > "$land/branch_sha"
+run_land 0
+echo error > "$land/branch_sha"
+run_land 7
+echo "$H" > "$land/branch_sha"; echo git@github.com:fork/r.git > "$land/origin"; : > "$land/calls"
+run_land 7
+if grep -q 'git push' "$land/calls"; then fail "self-test: land deleted a branch through an origin that is not the repository"; fi
+echo git@github.com:o/r.git > "$land/origin"; echo git@github.com:fork/r.git > "$land/push_origin"; : > "$land/calls"
+run_land 7
+if grep -q 'git push' "$land/calls"; then fail "self-test: land deleted a branch through a push URL that is not the repository"; fi
+rm "$land/push_origin"
+: > "$land/calls"
+snap BASE "$H" false '[]' CLEAN > "$land/seq"
+run_land 1
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged into a non-default base"; fi
+echo git@github.com:o/r.git > "$land/origin"; : > "$land/calls"
+{ snap OPEN "$H" false '[]' CLEAN; snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
+run_land 0 --timeout-min 0
+
+# Self-test: push adopts a publish that stopped before syncing: GitHub holds a
+# copy of HEAD (same tree, parent already local) that HEAD does not contain.
+rg() { git -C "$land/repo" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
+mkdir -p "$land/repo" && rg init -q && rg checkout -q -b feat/7 && printf 'a\n' > "$land/repo/f" && rg add f && rg commit -qm base
+printf 'b\n' > "$land/repo/f" && rg commit -qam work
+rg commit-tree "$(rg rev-parse 'HEAD^{tree}')" -p "$(rg rev-parse HEAD^)" -m published > "$land/branch_sha"
+lane 0 "$land/repo" push 7
+[ "$(rg rev-parse HEAD)" = "$(cat "$land/branch_sha")" ] || fail "self-test: push did not adopt the published copy of HEAD"
+rg commit -q --allow-empty -m noop
+lane 0 "$land/repo" push 7
+[ "$(rg rev-parse HEAD)" = "$(cat "$land/branch_sha")" ] || fail "self-test: push left HEAD off the PR head when nothing changed"
+rg update-index --chmod=+x f && rg commit -qm exec
+rg commit-tree "$(rg rev-parse 'HEAD^{tree}')" -p "$(rg rev-parse HEAD^)" -m published > "$land/branch_sha"
+rg update-index --chmod=-x f && rg commit -qm "drop exec"
+if (cd "$land/repo" && FAKE="$land" PATH="$land/bin:$PATH" \
+  bash "$ROOT/skills/deliver-ready-issue/scripts/issue-lane.sh" push 7 >/dev/null 2>&1); then
+  fail "self-test: push treated a committed mode change as already published"
+fi
 printf 'agent-kit validation passed\n'

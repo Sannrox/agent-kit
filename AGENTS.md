@@ -11,8 +11,8 @@ Canonical skills live in `skills/<name>/` (`SKILL.md`, optional `references/`,
 in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
 `scripts/check-consumer.sh` is the consumer drift check;
 `scripts/validate-workflow-skills.sh` is the vendored wrapper consumers run;
-`scripts/gh-verified-push.sh` is the optional canonical publisher for
-GitHub-signed commits. `scripts/validate-kit.sh` is this repository's gate.
+`scripts/gh-verified-push.sh` is the canonical publisher for GitHub-signed
+commits; lanes run it from the kit through `issue-lane.sh push`. `scripts/validate-kit.sh` is this repository's gate.
 Read `README.md` before changing the stub contract.
 
 ## Build, Test, and Development Commands
