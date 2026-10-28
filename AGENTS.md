@@ -226,12 +226,12 @@ Prefer publishing PR branch tips with signed commits so GitHub shows
 **Verified**:
 
 1. Implement and commit locally as usual (`commit.gpgsign` may still apply).
-2. Publish the claim branch with `scripts/gh-verified-push.sh` instead of a
+2. Publish the claim branch with `bash scripts/gh-verified-push.sh` instead of a
    plain `git push` when you want the hosted commit Verified:
    - New branch:
-     `scripts/gh-verified-push.sh --create-branch-from origin/main --branch <topic> --sync-local`
+     `bash scripts/gh-verified-push.sh --create-branch-from origin/main --branch <topic> --sync-local`
    - Existing PR branch:
-     `scripts/gh-verified-push.sh --branch <topic> --sync-local`
+     `bash scripts/gh-verified-push.sh --branch <topic> --sync-local`
 3. Never pass `--no-gpg-sign` for local commits; if GPG fails, stop and fix it.
 
 When merging PRs, prefer **squash** (`gh pr merge --squash --delete-branch`) so
