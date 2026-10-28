@@ -82,7 +82,9 @@ ambiguous. Report the smallest action that would unblock delivery.
    The script derives `<type>` from the Issue, creates `<type>/<issue>` on
    GitHub from the default branch with an atomic ref creation, assigns you, and
    prints the branch and base SHA. Exit code 3 means another machine claimed
-   first: stop and report; do not create a differently named branch. Under an
+   first or the repository has no free lane under the three-lane limit
+   (`issue-lane.sh capacity` shows the count): stop and report; do not create
+   a differently named branch. Under an
    Implement-only ceiling, do not claim; state in the report that the Issue
    stays unclaimed and invisible to other machines, or ask for claim
    authority first.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Inspect, claim, release, publish, or land the delivery lane of one GitHub Issue.
+# Inspect, claim, release, publish, or land the delivery lane of one GitHub
+# Issue, or report the repository's lane capacity.
 #
 # A lane claim lives on GitHub so agents on different machines see it:
 #   1. the branch <type>/<issue>, created from the default branch with an
@@ -9,6 +10,13 @@
 #      list and timestamped by the Issue timeline.
 # Open Pull Requests that reference the Issue and any branch matching
 # */<issue> or */<issue>-* count as claims too.
+#
+# capacity counts live lanes repository-wide against the lane limit
+# (ISSUE_LANE_LIMIT, default 3): open Pull Requests from claim branches plus
+# claim branches without one whose Issue is open. A claim branch whose Issue is
+# closed or whose Pull Request merged is stale: reported, never counted. claim
+# refuses when no capacity remains, and deletes its new branch again if a
+# concurrent claim pushed the repository over the limit.
 #
 # push publishes the lane branch with GitHub-verified commits through this
 # kit's gh-verified-push.sh and resets the checkout to the published commit, so
@@ -25,18 +33,21 @@
 # Issue closed; only then is the claim branch deleted.
 #
 # Usage:
+#   bash issue-lane.sh capacity [--json]
+#   bash issue-lane.sh capacity --self-test
 #   bash issue-lane.sh check <issue> [--json]
 #   bash issue-lane.sh claim <issue> [--dry-run]
 #   bash issue-lane.sh release <issue> [--yes]
 #   bash issue-lane.sh push <issue>
 #   bash issue-lane.sh land <issue> --pr <number> [--head <sha>] [--timeout-min <n>]
 #
-# Exit codes: 0 unclaimed, done, or merged and confirmed; 3 claimed by another
-# lane; 4 head moved (review and land the new head); 5 merge blocked (failed
-# check, conflict, or behind main); 6 not mergeable yet when the watch timed out
-# (land again to keep watching); 7 merged but a postcondition is unconfirmed
-# (land again to recheck); 1 error.
-# Requires an authenticated gh, git, and jq. Run inside the repository.
+# Exit codes: 0 unclaimed, done, capacity left, or merged and confirmed; 3
+# claimed by another lane or no lane capacity left; 4 head moved (review and
+# land the new head); 5 merge blocked (failed check, conflict, or behind main);
+# 6 not mergeable yet when the watch timed out (land again to keep watching);
+# 7 merged but a postcondition is unconfirmed (land again to recheck); 1 error.
+# Requires an authenticated gh, git, and jq (--self-test needs only jq). Run
+# inside the repository.
 # ISSUE_LANE_POLL_SECONDS (default 60) sets how often land polls.
 set -euo pipefail
 
@@ -44,6 +55,7 @@ set -euo pipefail
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 STALE_HOURS=6
+LANE_LIMIT="${ISSUE_LANE_LIMIT:-3}"
 POLL_SECONDS="${ISSUE_LANE_POLL_SECONDS:-60}"
 
 usage() {
@@ -56,23 +68,31 @@ fail() {
   exit 1
 }
 
-for tool in gh git jq; do
-  command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
-done
+require_tools() {
+  local tool
+  for tool in "$@"; do
+    command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
+  done
+}
 
 command_name="${1:-}"
-issue="${2:-}"
 case "$command_name" in
-  check | claim | release | push | land) ;;
+  capacity | check | claim | release | push | land) ;;
   -h | --help | "") usage 0 ;;
   *) usage ;;
 esac
-printf '%s' "$issue" | grep -Eq '^[0-9]+$' || fail "Issue number required, got '${issue}'"
-shift 2
+shift
+issue=""
+if [ "$command_name" != capacity ]; then
+  issue="${1:-}"
+  printf '%s' "$issue" | grep -Eq '^[0-9]+$' || fail "Issue number required, got '${issue}'"
+  shift
+fi
 
 json_output=false
 dry_run=false
 confirm=false
+self_test=false
 land_pr=""
 land_head=""
 timeout_min=45
@@ -81,6 +101,7 @@ while [ "$#" -gt 0 ]; do
     --json) json_output=true ;;
     --dry-run) dry_run=true ;;
     --yes) confirm=true ;;
+    --self-test) self_test=true ;;
     --pr | --head | --timeout-min)
       [ "$#" -ge 2 ] || usage
       case "$1" in
@@ -100,13 +121,117 @@ case "$command_name" in
     [ "$json_output" = false ] && [ "$dry_run" = false ] && [ "$confirm" = false ] \
       || fail "${command_name} does not take --json, --dry-run, or --yes"
     ;;
-  *)
-    [ -z "$land_pr$land_head" ] || fail "--pr and --head belong to land"
+  capacity)
+    [ "$dry_run" = false ] && [ "$confirm" = false ] || fail "capacity does not take --dry-run or --yes"
     ;;
 esac
+[ "$command_name" = land ] || [ -z "$land_pr$land_head" ] || fail "--pr and --head belong to land"
+[ "$command_name" = capacity ] || [ "$self_test" = false ] || fail "--self-test belongs to capacity"
+printf '%s' "$LANE_LIMIT" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_LIMIT must be a positive whole number"
+
+# Claim branches are <type>/<issue> or <type>/<issue>-<slug>.
+CLAIM_BRANCH_RE='^[^/]+/[0-9]+(-[^/]*)?$'
+
+# Lane capacity from four JSON listings read on stdin, in order: branches
+# ({name, sha}), open Pull Requests ({number, headRefName, closes}: closes
+# counts the Issues it closes), open Issues ({number}), and merged Pull Request
+# heads ({headRefName, sha}). They come through stdin, not arguments, because
+# a long history outgrows the argument size limit. An open Pull Request is an
+# implementation lane when its head is a claim branch or it closes an Issue. A
+# merged head only makes a branch stale while the branch still points at it; a
+# recreated branch is a new claim.
+capacity_from_json() {
+  jq -s --argjson limit "$LANE_LIMIT" --arg re "$CLAIM_BRANCH_RE" '
+    def issue_of: capture("^[^/]+/(?<n>[0-9]+)") | .n | tonumber;
+    . as [$branches, $prs, $open_issues, $merged]
+    | [$prs[] | select((.headRefName | test($re)) or .closes > 0) | {number, headRefName}] as $lane_prs
+    | [$prs[].headRefName] as $pr_heads
+    | [$open_issues[].number] as $open
+    | [$branches[] | select((.name | test($re)) and (.name as $n | $pr_heads | index($n) | not))] as $bare
+    | [$bare[] | select(. as $b | any($merged[]; .headRefName == $b.name and .sha == $b.sha)
+        or ($open | index($b.name | issue_of) | not)) | .name] as $stale
+    | [$bare[] | .name | select(. as $n | $stale | index($n) | not)] as $orphans
+    | ($lane_prs | length) + ($orphans | length) as $used
+    | {limit: $limit, used: $used, remaining: ([$limit - $used, 0] | max),
+       implementation_prs: $lane_prs, orphan_claim_branches: $orphans, stale_claim_branches: $stale}'
+}
+
+# Fetch the four listings from GitHub. Returns non-zero when any listing fails,
+# so a partial view never passes for spare capacity.
+live_capacity_json() {
+  {
+    gh api "repos/${repo}/git/matching-refs/heads/" --paginate \
+      | jq -sc '[.[][] | {name: (.ref | ltrimstr("refs/heads/")), sha: .object.sha}]' || exit 1
+    gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName,closingIssuesReferences \
+      --jq '[.[] | {number, headRefName, closes: (.closingIssuesReferences | length)}]' || exit 1
+    gh api "repos/${repo}/issues?state=open&per_page=100" --paginate \
+      | jq -sc '[.[][] | select(.pull_request == null) | {number}]' || exit 1
+    gh api "repos/${repo}/pulls?state=closed&per_page=100" --paginate \
+      | jq -sc '[.[][] | select(.merged_at != null) | {headRefName: .head.ref, sha: .head.sha}]' || exit 1
+  } | capacity_from_json
+}
+
+print_capacity() {
+  if [ "$json_output" = true ]; then
+    printf '%s\n' "$1" | jq .
+    return
+  fi
+  printf '%s\n' "$1" | jq -r '
+    def list(f): if length == 0 then "none" else map(f) | join(", ") end;
+    "lane capacity: \(.used)/\(.limit) used, \(.remaining) remaining",
+    "implementation PRs: \(.implementation_prs | list("#\(.number) \(.headRefName)"))",
+    "orphan claim branches: \(.orphan_claim_branches | list(.))",
+    "stale claim branches: \(.stale_claim_branches | list(.))"'
+}
+
+# Offline checks of the counting rules in capacity_from_json.
+capacity_self_test() {
+  local report
+  expect() { # description jq-filter branches prs open-issues merged
+    report="$(printf '%s\n' "$3" "$4" "$5" "$6" | capacity_from_json)"
+    printf '%s' "$report" | jq -e "$2" >/dev/null || fail "capacity self-test: $1: $report"
+  }
+  expect "empty repository" '.used == 0 and .remaining == 3' '[]' '[]' '[]' '[]'
+  expect "orphan claim counts; other branches do not" \
+    '.used == 1 and .orphan_claim_branches == ["feat/1"]' \
+    '[{"name":"main","sha":"a"},{"name":"feat/1","sha":"a"},{"name":"docs/note","sha":"a"}]' '[]' '[{"number":1}]' '[]'
+  expect "closed Issue makes its branch stale" '.used == 0 and .stale_claim_branches == ["feat/1"]' \
+    '[{"name":"feat/1","sha":"a"}]' '[]' '[]' '[]'
+  expect "a Pull Request and its branch are one lane" '.used == 1 and .orphan_claim_branches == []' \
+    '[{"name":"feat/1","sha":"a"}]' '[{"number":10,"headRefName":"feat/1","closes":0}]' '[{"number":1}]' '[]'
+  expect "slug branches count; Pull Requests closing no Issue do not" '.used == 1' \
+    '[{"name":"codex/12-slug","sha":"a"}]' '[{"number":9,"headRefName":"deps/update","closes":0}]' '[{"number":12}]' '[]'
+  expect "a Pull Request closing an Issue counts whatever its branch" \
+    '.used == 1 and .implementation_prs == [{"number":9,"headRefName":"fix-timeout"}]' \
+    '[]' '[{"number":9,"headRefName":"fix-timeout","closes":1}]' '[]' '[]'
+  expect "over the limit clamps remaining at 0" '.used == 4 and .remaining == 0' '[]' \
+    '[{"number":1,"headRefName":"feat/1"},{"number":2,"headRefName":"fix/2"},{"number":3,"headRefName":"docs/3"},{"number":4,"headRefName":"chore/4"}]' \
+    '[]' '[]'
+  expect "branch still at its merged head is stale" '.used == 0 and .stale_claim_branches == ["feat/1"]' \
+    '[{"name":"feat/1","sha":"a"}]' '[]' '[{"number":1}]' '[{"headRefName":"feat/1","sha":"a"}]'
+  expect "recreated branch past a merged head is live" '.used == 1 and .orphan_claim_branches == ["feat/1"]' \
+    '[{"name":"feat/1","sha":"b"}]' '[]' '[{"number":1}]' '[{"headRefName":"feat/1","sha":"a"}]'
+  printf 'issue-lane capacity self-test passed\n'
+}
+
+if [ "$self_test" = true ]; then
+  require_tools jq
+  LANE_LIMIT=3
+  capacity_self_test
+  exit 0
+fi
+require_tools gh git jq
 
 repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 default_branch="$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)"
+
+if [ "$command_name" = capacity ]; then
+  report="$(live_capacity_json)" || fail "cannot load the listings for lane capacity"
+  print_capacity "$report"
+  [ "$(printf '%s' "$report" | jq .remaining)" -gt 0 ] || exit 3
+  exit 0
+fi
+
 login="$(gh api user --jq .login)"
 
 issue_json="$(gh issue view "$issue" --json number,title,state,labels,assignees,closedByPullRequestsReferences)"
@@ -375,6 +500,12 @@ case "$command_name" in
       printf 'issue-lane: refusing to claim #%s\n' "$issue" >&2
       exit 3
     fi
+    capacity="$(live_capacity_json)" || fail "cannot load the listings for lane capacity"
+    if [ "$(printf '%s' "$capacity" | jq .remaining)" -eq 0 ]; then
+      print_capacity "$capacity" >&2
+      printf 'issue-lane: lane limit reached; land or release a lane before claiming #%s\n' "$issue" >&2
+      exit 3
+    fi
     base_sha="$(gh api "repos/${repo}/git/ref/heads/${default_branch}" --jq .object.sha)"
     printf 'claim plan: branch %s from %s@%s, assign %s to #%s\n' \
       "$lane_branch" "$default_branch" "${base_sha:0:12}" "$login" "$issue" >&2
@@ -387,6 +518,19 @@ case "$command_name" in
       printf 'issue-lane: could not create %s; another lane probably claimed #%s first:\n' \
         "$lane_branch" "$issue" >&2
       print_report "$(report_json)" >&2
+      exit 3
+    fi
+    # Claims racing for the last slot can all pass the check above; recount
+    # with this branch included and back out if the limit is now exceeded.
+    # Every racer may back out, which leaves the slot free to claim again; the
+    # limit is never exceeded.
+    recounted=true
+    capacity="$(live_capacity_json)" || recounted=false
+    if [ "$recounted" = false ] || [ "$(printf '%s' "$capacity" | jq .used)" -gt "$LANE_LIMIT" ]; then
+      [ "$recounted" = false ] || print_capacity "$capacity" >&2
+      gh api -X DELETE "repos/${repo}/git/refs/heads/${lane_branch}" >/dev/null \
+        || fail "created ${lane_branch} but could not confirm lane capacity or delete it; delete it by hand"
+      printf 'issue-lane: lane limit exceeded or unconfirmed; deleted %s again\n' "$lane_branch" >&2
       exit 3
     fi
     gh issue edit "$issue" --add-assignee "@me" >/dev/null

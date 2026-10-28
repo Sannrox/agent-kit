@@ -87,8 +87,10 @@ do not count them as lanes. Because `main` is squash-merged, confirm a landing
 with `gh pr view --json state,mergeCommit`, not `git branch --merged`.
 
 Count live lanes as open implementation Pull Requests plus claim branches
-without one, repository-wide. Recommend no more candidates than the remaining
-capacity of the three-lane limit. Assigned or planned work is not a running
+without one, repository-wide, with
+`bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" capacity`
+(set `ISSUE_LANE_LIMIT` for a documented limit of two). Recommend no more
+candidates than the remaining capacity of the three-lane limit. Assigned or planned work is not a running
 lane. When several Issues are equally ready, order the report by
 downstream-unblocking depth and then Issue number. Call this a deterministic
 presentation order, not project priority.
