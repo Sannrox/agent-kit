@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- `issue-lane.sh capacity` counts live lanes against the lane limit (default
+  three, `ISSUE_LANE_LIMIT`) and reports stale claim branches; `claim` refuses
+  when no lane is free. `validate-kit.sh` runs its `--self-test`.
+
 ### Changed
 
 - Breaking: no pinning. Removed `templates/agent-kit.lock`; stubs link to

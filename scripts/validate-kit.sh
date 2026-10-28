@@ -36,6 +36,7 @@ done
 grep -Eq 'issue-lane\.sh"?[[:space:]]+check' skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use issue-lane.sh check"
 
 for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax error in $s"; done
+bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity --self-test >/dev/null || fail "issue-lane.sh capacity self-test failed"
 
 # Self-test: render a fixture consumer from the templates and check it.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT

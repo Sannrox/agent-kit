@@ -23,15 +23,15 @@ stalled lane. It is not an orchestration-only role.
    not what this machine has checked out:
 
    ```sh
-   gh pr list --state open --json number,headRefName,isDraft,updatedAt
-   gh api repos/<owner>/<repo>/git/matching-refs/heads/ --paginate --jq '.[].ref'
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" capacity
    bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>
    ```
 
-   New lanes fit within the remaining capacity of the three-lane limit: open
-   implementation Pull Requests plus claim branches without one. Do not count
-   assigned or planned work as a running lane, and do not start a lane for an
-   Issue whose check says `claimed`.
+   New lanes fit within the remaining capacity of the three-lane limit, which
+   `capacity` counts: open implementation Pull Requests plus claim branches
+   without one, with stale claim branches reported but not counted. Do not
+   count assigned or planned work as a running lane, and do not start a lane
+   for an Issue whose check says `claimed`.
 3. Reject candidate pairs that touch the same collision surface listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`. Run such Issues in sequence.
 4. Resolve one authority ceiling for the run. Claiming needs Publish or Land,
    or an explicit claim authorization; without it the lanes are invisible to
@@ -52,8 +52,9 @@ bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scri
 
 The script prints the branch `<type>/<issue>`, the base SHA, and the assignee.
 Record both in the ledger. Exit code 3 means another lane claimed the Issue
-between the frontier run and now: drop the candidate, do not rename the branch,
-and refill the slot from the frontier order if capacity remains.
+between the frontier run and now, or the lane limit is reached (the script
+prints which): drop the candidate, do not rename the branch, and refill the
+slot from the frontier order only if `capacity` shows a free lane.
 
 Prepare isolation per machine. On a machine with an existing checkout the lead
 adds the worktree, serialized with other shared Git mutations:
@@ -162,7 +163,8 @@ the maintainer, never on GitHub.
   remove another lane's assignment or branch to make room.
 - Never switch, reset, stash, or clean the primary checkout or another lane's
   worktree.
-- Never exceed the three-lane limit or the run's authority ceiling.
+- Never exceed the three-lane limit (`issue-lane.sh capacity`) or the run's
+  authority ceiling.
 - Never land two lanes concurrently or land a lane whose sibling changed a
   shared surface without re-verifying it.
 - Never delete a worktree or branch you do not own without the maintainer's
