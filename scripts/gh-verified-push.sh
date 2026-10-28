@@ -7,7 +7,7 @@
 # file delta from the remote tip (or an explicit base) onto the branch as one commit.
 #
 # Usage:
-#   scripts/gh-verified-push.sh [--repo owner/name] [--branch name]
+#   bash scripts/gh-verified-push.sh [--repo owner/name] [--branch name]
 #       [--base-oid sha] [--expected-oid sha] [--message "subject"]
 #       [--body "body"] [--create-branch-from sha] [--dry-run] [--sync-local]
 #
@@ -22,10 +22,11 @@
 #   pass --create-branch-from <sha> (usually origin/main) to create the ref first,
 #   then publish the delta from that sha to HEAD.
 #
-# File modes: createCommitOnBranch cannot carry them, so every pushed file lands
-#   as 100644. The script prints one warning per pushed file whose HEAD mode is
-#   100755. Convention: run scripts through their interpreter (sh, bash, python3)
-#   and never make a check require the executable bit.
+# File modes: createCommitOnBranch cannot set them. A modified file keeps its
+#   remote mode, but an added file, or a 100644 file made 100755, lands as
+#   100644. The script prints one warning per such file. Convention: run scripts
+#   through their interpreter (sh, bash, python3) and never make a check require
+#   the executable bit.
 #
 # Requires: git, gh, jq, base64
 set -euo pipefail
@@ -35,7 +36,7 @@ set -euo pipefail
 # consumer check does not require it.
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -198,15 +199,20 @@ if [ -n "$merge_commit" ]; then
   exit 1
 fi
 
-# Print the pushed paths (added or modified between $1 and $2) whose mode at $2
-# is 100755. createCommitOnBranch publishes them as 100644.
+# Print the pushed paths (added or modified between $1 and $2) that become
+# 100755 at $2: added files, and files whose mode changes to 100755.
+# createCommitOnBranch publishes those as 100644; a modified file that was
+# already 100755 keeps its mode.
 executable_paths() {
-  local meta fpath new_mode
+  local meta fpath old_mode new_mode
   # --raw -z emits ":<old mode> <new mode> <old oid> <new oid> <status>" NUL path NUL.
+  # An added file's old mode is 000000.
   while IFS= read -r -d '' meta && IFS= read -r -d '' fpath; do
+    old_mode=${meta#:}
+    old_mode=${old_mode%% *}
     new_mode=${meta#* }
     new_mode=${new_mode%% *}
-    if [ "$new_mode" = "100755" ]; then printf '%s\n' "$fpath"; fi
+    if [ "$new_mode" = "100755" ] && [ "$old_mode" != "100755" ]; then printf '%s\n' "$fpath"; fi
   done < <(git diff --raw --no-renames -z --diff-filter=AM "$1" "$2")
 }
 

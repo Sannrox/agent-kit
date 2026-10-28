@@ -55,9 +55,10 @@ if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "sel
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 
-# Self-test: gh-verified-push.sh warns once per pushed 100755 file. A dry run
-# with --repo and --expected-oid never touches the network; a failing gh stub
-# proves it.
+# Self-test: gh-verified-push.sh warns once per pushed file that becomes
+# 100755 (added, or changed from 100644), and not for a modified file that
+# already was. A dry run with --repo and --expected-oid never touches the
+# network; a failing gh stub proves it.
 push="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-push.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$push"' EXIT
 mkdir -p "$push/bin" "$push/repo"
 printf '#!/bin/sh\necho "gh must not be called" >&2\nexit 1\n' > "$push/bin/gh"; chmod +x "$push/bin/gh"
@@ -66,11 +67,14 @@ g init -q
 printf 'a\n' > "$push/repo/plain.sh"; printf 'b\n' > "$push/repo/old-exec.sh"
 g add . && g update-index --chmod=+x old-exec.sh && g commit -qm base
 base="$(g rev-parse HEAD)"
-printf 'c\n' > "$push/repo/new-exec.sh"; printf 'a2\n' > "$push/repo/plain.sh"
-g add plain.sh new-exec.sh && g update-index --chmod=+x new-exec.sh && g commit -qm head
+printf 'c\n' > "$push/repo/new-exec.sh"; printf 'a2\n' > "$push/repo/plain.sh"; printf 'b2\n' > "$push/repo/old-exec.sh"
+g add plain.sh new-exec.sh old-exec.sh && g update-index --chmod=+x new-exec.sh plain.sh old-exec.sh && g commit -qm head
+[ "$(g ls-tree HEAD old-exec.sh | cut -d' ' -f1)" = 100755 ] || fail "self-test: fixture should keep old-exec.sh 100755"
 out="$(cd "$push/repo" && PATH="$push/bin:$PATH" bash "$ROOT/scripts/gh-verified-push.sh" \
   --repo o/r --branch b --expected-oid "$base" --dry-run 2>&1)" || fail "self-test: gh-verified-push dry run failed: $out"
-printf '%s\n' "$out" | grep -q 'files changed: 2$' || fail "self-test: fixture should push plain.sh and new-exec.sh only: $out"
-[ "$(printf '%s\n' "$out" | grep -c '^Warning: ')" = 1 ] || fail "self-test: expected one mode warning, got: $out"
-printf '%s\n' "$out" | grep -q '^Warning: new-exec.sh is 100755' || fail "self-test: no warning for new-exec.sh: $out"
+printf '%s\n' "$out" | grep -q 'files changed: 3$' || fail "self-test: fixture should push three files: $out"
+[ "$(printf '%s\n' "$out" | grep -c '^Warning: ')" = 2 ] || fail "self-test: expected two mode warnings, got: $out"
+printf '%s\n' "$out" | grep -q '^Warning: new-exec.sh is 100755' || fail "self-test: no warning for added new-exec.sh: $out"
+printf '%s\n' "$out" | grep -q '^Warning: plain.sh is 100755' || fail "self-test: no warning for plain.sh made 100755: $out"
+if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test: modified old-exec.sh keeps 100755 and needs no warning: $out"; fi
 printf 'agent-kit validation passed\n'
