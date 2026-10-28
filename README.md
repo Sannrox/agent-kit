@@ -22,7 +22,10 @@ hand-copying long `SKILL.md` files.
 Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
 consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
 optional canonical publisher for GitHub-signed commits; consumers that still
-want it copy it, others publish with `git push`.
+want it copy it, others publish with `git push`. It cannot carry file modes: a
+100755 file lands as 100644, and the script warns for each one. Run scripts
+through their interpreter (`sh`, `bash`, `python3`); checks never require the
+executable bit.
 
 ## The stub pattern
 
