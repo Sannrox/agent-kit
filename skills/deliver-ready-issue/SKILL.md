@@ -18,7 +18,7 @@ live on GitHub because lanes may run on different machines; worktrees only
 isolate lanes that share a machine. To deliver several ready Issues at once,
 the lead follows [references/parallel-delivery.md](references/parallel-delivery.md)
 and runs this Skill once per lane. [scripts/issue-lane.sh](scripts/issue-lane.sh)
-inspects, claims, and releases a lane deterministically.
+inspects, claims, releases, publishes, and lands a lane deterministically.
 
 ## Establish the authority ceiling
 
@@ -153,18 +153,22 @@ mark the Issue unless documented maintainer policy requires it.
    the branch onto `main` and rerun the affected checks. Otherwise refresh only
    for a failing gate, an explicit request, or a sibling lane that landed on a
    shared surface (listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`). Do not rebase merely because `main` advanced.
-2. Publish to the claim branch using the path in `AGENTS.md` (`### Verified
-   commits on GitHub`). If that section names `scripts/gh-verified-push.sh`
-   and the file exists, use it (GraphQL `createCommitOnBranch`) so the hosted
-   commit is Verified:
-   - Claim branch (already exists on GitHub):
-     `bash scripts/gh-verified-push.sh --branch <type>/<issue> --sync-local`
-   - A branch that does not exist yet (no claim was possible):
-     `bash scripts/gh-verified-push.sh --create-branch-from origin/main --branch <type>/<issue> --sync-local`
-   - Confirm the script reports `verification.verified=true` and that the
-     hosted tree matches local `HEAD`.
-   Otherwise publish with `git push -u origin HEAD` (or `git push` if
-   upstream is already set) unless the user asked for a different path.
+2. Publish the claim branch from the lane worktree:
+
+   ```sh
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" push <issue>
+   ```
+
+   It publishes GitHub-verified commits through the kit's
+   `scripts/gh-verified-push.sh` (GraphQL `createCommitOnBranch`) and resets
+   the worktree to the published commit, so local `HEAD` is the Pull Request
+   head. It refuses a dirty tree, a branch outside the lane, a branch that was
+   never claimed, and a checkout that does not descend from the published
+   branch. Refresh onto `main` before the first publish; a refresh after it
+   rewrites history that verified publishing cannot replace yet
+   (Sannrox/agent-kit#8), so report such a lane blocked instead of forcing it. Confirm it reports `verification.verified=true`. Publish
+   with `git push` instead only when `AGENTS.md` (`### Verified commits on
+   GitHub`) says the repository does, or the user asks.
 3. Open the Pull Request as a draft with the first published commit, then mark
    it ready once verification and review are complete and `mergeable` is no
    longer `UNKNOWN` (`gh pr ready <pr>`). The Pull Request:
@@ -184,22 +188,32 @@ mark the Issue unless documented maintainer policy requires it.
 
 ### 6. Land when authorized
 
-1. Wait for required CI and review. Resolve actionable feedback in the same
-   branch and rerun affected checks. Re-publish review fixes with the same
-   path as step 5.
-2. Recheck that dependencies and repository protections still permit landing.
-   Land one lane at a time; wait for a sibling lane's merge to finish and
-   recheck `mergeable` before starting yours.
-3. Prefer squash merge for Verified linear history on `main`:
-   `gh pr merge --squash --delete-branch`.
-   Use `--match-head-commit` with the published tip when available. Do not use
-   GitHub rebase-merge when Verified commits matter. A failed or timed-out
-   merge response may still have merged; reconcile the remote Pull Request
-   state and `main` ancestry before retrying.
-4. Confirm the Issue closed and the default branch contains the merge. The
-   merge deleted the claim branch and the closed Issue ends the claim; the
-   assignment stays as history. Then remove the local lane, serialized with
-   other shared Git mutations:
+1. Land as soon as the Pull Request is ready, its head is the reviewed,
+   verified commit, and its dependencies still permit landing. Do not wait for
+   CI first; the required checks gate the merge:
+
+   ```sh
+   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" land <issue> --pr <pr>
+   ```
+
+   It watches the checks, then squash-merges with local `HEAD` as the merge
+   precondition (pass `--head <sha>` for another reviewed commit), so GitHub
+   refuses the merge if the head moved. It succeeds only once the default
+   branch contains the merge and the Issue closed, and only then deletes the
+   claim branch on GitHub. Run it in the background and keep working while the
+   checks run. Exit 4: the head moved; review the new head and land again.
+   Exit 5: a failed check, a conflict, or a branch behind `main`; fix it under
+   the landing rules below, `push`, and land again. Exit 6: still not
+   mergeable when the watch timed out; land again to keep watching. Exit 7:
+   merged, but a postcondition is unconfirmed; land again to recheck. A
+   timeout ends observation, not the task.
+2. Resolve review feedback in the same branch, `push`, and land the new head.
+3. Never queue GitHub auto-merge: a queued request survives later pushes and
+   can land a head nobody reviewed. Do not use GitHub rebase-merge when
+   Verified commits matter. Never retry a merge blindly: `land` reconciles an
+   uncertain response from the Pull Request state and is safe to rerun.
+4. The closed Issue ends the claim; the assignment stays as history. Remove
+   the local lane, serialized with other shared Git mutations:
 
    ```sh
    git worktree remove .worktrees/issue-<issue>
@@ -217,8 +231,20 @@ mark the Issue unless documented maintainer policy requires it.
 5. Invoke `advance-issue-frontier` in report-only mode unless the user also
    authorized frontier status updates.
 
-Never enable auto-merge, bypass checks, relax protection, or merge beyond the
-authority ceiling.
+Landing rules:
+
+- Never rerun CI to chase green. Classify each failed check against the
+  newest `main` run of the same job: fix a failure the change caused; a
+  failure that also fails on `main` is inherited, and a red `main` is an
+  emergency fixed in its own change first. Name inherited failures in the
+  Pull Request.
+- A failure that does not reproduce and is unrelated to the change is a flaky
+  test: open an Issue with the failing output before any rerun, and fix the
+  flake rather than rerunning it again.
+- Refresh onto `main` only for a conflict, a failing gate, or an explicit
+  request, never just because `main` moved.
+
+Never bypass checks, relax protection, or merge beyond the authority ceiling.
 
 ## Report completion
 

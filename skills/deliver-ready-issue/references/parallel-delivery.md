@@ -116,14 +116,15 @@ Lane brief
 
 ## 4. Publish and land in sequence
 
-1. Each lane publishes to its claim branch from its own worktree with the
-   path in `AGENTS.md` under Publish authority, after `git fetch --prune origin`
-   and `git merge-base --is-ancestor origin/main HEAD` pass. Publishing may
-   happen concurrently; landing never.
-2. Land one lane at a time under Land authority:
-   `gh pr merge <pr> --squash --delete-branch --match-head-commit <verified-sha>`.
-   A failed or timed-out merge response may still have merged; reconcile the
-   remote state before retrying.
+1. Each lane publishes to its claim branch from its own worktree with
+   `issue-lane.sh push <issue>` under Publish authority, after
+   `git fetch --prune origin` and `git merge-base --is-ancestor origin/main HEAD`
+   pass. Publishing may happen concurrently.
+2. Under Land authority each lane runs `issue-lane.sh land <issue> --pr <pr>`
+   from its worktree as soon as its Pull Request is ready. Lanes may watch
+   concurrently; each merges its own reviewed head once its checks pass, and a
+   lane that conflicts with a sibling's landing reports exit 5 instead of
+   merging.
 3. After each landing, run `git fetch --prune origin` and recompute the
    frontier. Ask the remaining lanes to check `mergeable` and their tests
    against the new `main`. Refresh a lane onto `main` only for a conflict, a
