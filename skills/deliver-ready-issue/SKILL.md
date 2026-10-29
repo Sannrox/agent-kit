@@ -239,7 +239,9 @@ Landing rules:
   newest `main` run of the same job: fix a failure the change caused; a
   failure that also fails on `main` is inherited, and a red `main` is an
   emergency fixed in its own change first. Name inherited failures in the
-  Pull Request.
+  Pull Request. `land` blocks on any failed check; pass
+  `--accept-failed "<check>"` for each inherited failure of a check that is
+  not required. A failed required check never lands.
 - A failure that does not reproduce and is unrelated to the change is a flaky
   test: open an Issue with the failing output before any rerun, and fix the
   flake rather than rerunning it again.

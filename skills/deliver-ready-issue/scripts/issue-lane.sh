@@ -40,6 +40,7 @@
 #   bash issue-lane.sh release <issue> [--yes]
 #   bash issue-lane.sh push <issue>
 #   bash issue-lane.sh land <issue> --pr <number> [--head <sha>] [--timeout-min <n>]
+#       [--accept-failed <check>]...
 #
 # Exit codes: 0 unclaimed, done, capacity left, or merged and confirmed; 3
 # claimed by another lane or no lane capacity left; 4 head moved (review and
@@ -96,18 +97,20 @@ self_test=false
 land_pr=""
 land_head=""
 timeout_min=45
+accepted_failures='[]'
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --json) json_output=true ;;
     --dry-run) dry_run=true ;;
     --yes) confirm=true ;;
     --self-test) self_test=true ;;
-    --pr | --head | --timeout-min)
+    --pr | --head | --timeout-min | --accept-failed)
       [ "$#" -ge 2 ] || usage
       case "$1" in
         --pr) land_pr="$2" ;;
         --head) land_head="$2" ;;
         --timeout-min) timeout_min="$2" ;;
+        --accept-failed) accepted_failures="$(jq -c --arg c "$2" '. + [$c]' <<< "$accepted_failures")" ;;
       esac
       shift
       ;;
@@ -125,7 +128,8 @@ case "$command_name" in
     [ "$dry_run" = false ] && [ "$confirm" = false ] || fail "capacity does not take --dry-run or --yes"
     ;;
 esac
-[ "$command_name" = land ] || [ -z "$land_pr$land_head" ] || fail "--pr and --head belong to land"
+[ "$command_name" = land ] || { [ -z "$land_pr$land_head" ] && [ "$accepted_failures" = '[]' ]; } \
+  || fail "--pr, --head, and --accept-failed belong to land"
 [ "$command_name" = capacity ] || [ "$self_test" = false ] || fail "--self-test belongs to capacity"
 printf '%s' "$LANE_LIMIT" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_LIMIT must be a positive whole number"
 
@@ -384,22 +388,42 @@ published_copy_of() {
 # The Pull Request fields land decides on. Check runs report status plus
 # conclusion; commit statuses report state.
 land_pr_json() {
-  gh pr view "$land_pr" -R "$repo" --json \
-    number,state,isDraft,isCrossRepository,baseRefName,headRefName,headRefOid,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup,closingIssuesReferences
+  gh api graphql -f owner="${repo%%/*}" -f name="${repo#*/}" -F n="$land_pr" -f query='
+    query($owner: String!, $name: String!, $n: Int!) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $n) {
+          number title state isDraft isCrossRepository baseRefName headRefName headRefOid mergeStateStatus
+          autoMergeRequest { enabledAt }
+          mergeCommit { oid }
+          closingIssuesReferences(first: 20) { nodes { number } }
+          commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { totalCount nodes {
+            ... on CheckRun { name status conclusion isRequired(pullRequestNumber: $n) }
+            ... on StatusContext { context state isRequired(pullRequestNumber: $n) }
+          } } } } } }
+        }
+      }
+    }' --jq '.data.repository.pullRequest
+      | .closingIssuesReferences = [.closingIssuesReferences.nodes[]]
+      | .statusCheckRollup = [(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])[]]
+      | .checksComplete = ((.commits.nodes[0].commit.statusCheckRollup.contexts.totalCount // 0) <= (.statusCheckRollup | length))
+      | del(.commits)'
 }
 
-# Summarize the checks of a Pull Request snapshot: pending and failed counts
-# and the failed check names.
+# Summarize the checks of a Pull Request snapshot: the pending count and the
+# failed checks that block. A failed required check always blocks; a failed
+# optional check blocks unless --accept-failed names it as inherited.
 land_checks() {
-  printf '%s' "$1" | jq -c '
+  printf '%s' "$1" | jq -c --argjson accepted "$accepted_failures" '
     [.statusCheckRollup[]? | {
       name: (.name // .context // "check"),
+      required: (.isRequired == true),
       pending: ((.status // "COMPLETED") != "COMPLETED" or ((.state // "") | IN("PENDING", "EXPECTED"))),
       failed: (((.conclusion // "") | IN("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"))
         or ((.state // "") | IN("FAILURE", "ERROR")))
     }]
     | {pending: map(select(.pending)) | length,
-       failed: [.[] | select(.failed) | .name]}'
+       failed: [.[] | select(.failed and (.required or (.name | IN($accepted[]) | not))) | .name],
+       accepted: [.[] | select(.failed and (.required | not) and (.name | IN($accepted[]))) | .name]}'
 }
 
 # Withdraw a queued auto-merge so no later head can land through it.
@@ -612,12 +636,15 @@ case "$command_name" in
 
     deadline=$(( $(date +%s) + timeout_min * 60 ))
     while :; do
+      # Decide only on a complete view of the checks.
+      [ "$(printf '%s' "$snapshot" | jq -r '.checksComplete != false')" = true ] \
+        || { printf 'issue-lane: #%s has more checks than land reads; merge it by hand\n' "$land_pr" >&2; exit 5; }
       checks="$(land_checks "$snapshot")"
       merge_state="$(printf '%s' "$snapshot" | jq -r .mergeStateStatus)"
       pending="$(printf '%s' "$checks" | jq .pending)"
       failed="$(printf '%s' "$checks" | jq -r '.failed | join(", ")')"
       if [ "$pending" -eq 0 ] && [ -n "$failed" ]; then
-        printf 'issue-lane: #%s blocked by failed checks: %s; classify them under the landing rules\n' "$land_pr" "$failed" >&2
+        printf 'issue-lane: #%s blocked by failed checks: %s; classify them under the landing rules (name an optional check that also fails on %s with --accept-failed)\n' "$land_pr" "$failed" "$default_branch" >&2
         exit 5
       fi
       case "$merge_state" in
@@ -625,12 +652,17 @@ case "$command_name" in
           printf 'issue-lane: #%s is %s against %s; refresh the branch\n' "$land_pr" "$merge_state" "$default_branch" >&2
           exit 5
           ;;
-        CLEAN | HAS_HOOKS)
+        CLEAN | HAS_HOOKS | UNSTABLE)
+          # UNSTABLE means only optional checks failed; reaching here, each one
+          # was accepted, or the failed-checks guard above would have stopped.
           if [ "$pending" -eq 0 ]; then
+            accepted="$(printf '%s' "$checks" | jq -r '.accepted | join(", ")')"
+            [ -z "$accepted" ] || printf 'issue-lane: landing #%s over accepted inherited failures: %s\n' "$land_pr" "$accepted" >&2
+            title="$(printf '%s' "$snapshot" | jq -r .title)"
             # The REST merge either merges now or fails; it never queues. The
             # reviewed head is its precondition, so a moved head is refused.
             if ! merge_out="$(gh api -X PUT "repos/${repo}/pulls/${land_pr}/merge" \
-              -f merge_method=squash -f sha="$land_head" 2>&1)"; then
+              -f merge_method=squash -f sha="$land_head" -f commit_title="${title} (#${land_pr})" 2>&1)"; then
               snapshot="$(land_pr_json)"
               land_guard "$snapshot"
               printf 'issue-lane: merge of #%s refused: %s\n' "$land_pr" "$merge_out" >&2

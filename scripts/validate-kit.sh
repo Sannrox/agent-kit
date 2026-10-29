@@ -91,7 +91,7 @@ case "$*" in
   "api user"*) echo me ;;
   "issue view 7 --json state"*) cat "$FAKE/issue_state" ;;
   "issue view 7 --json"*) echo '{"number":7,"title":"feat: x","state":"OPEN","labels":[],"assignees":[],"closedByPullRequestsReferences":[]}' ;;
-  "pr view 9 "*) head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
+  "api graphql"*) head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
   "pr merge"* | "api -X DELETE"* | "api -X PUT"*) echo "$*" >> "$FAKE/calls" ;;
   "api repos/o/r/compare/"*) echo ahead ;;
   "api repos/o/r/commits/"*) echo true ;;
@@ -116,13 +116,14 @@ chmod +x "$land/bin/git"
 H=1111111111111111111111111111111111111111
 snap() { # state head auto(true|false) checks merge-state
   jq -cn --arg s "$1" --arg h "$2" --argjson a "$3" --argjson c "$4" --arg m "$5" \
-    '{number: 9, state: $s, isDraft: false, headRefName: "feat/7", headRefOid: $h, mergeStateStatus: $m,
+    '{number: 9, title: "feat: x", state: $s, isDraft: false, headRefName: "feat/7", headRefOid: $h, mergeStateStatus: $m,
       isCrossRepository: false, baseRefName: (if $s == "BASE" then "release" else "main" end), autoMergeRequest: (if $a then {} else null end), statusCheckRollup: $c,
       mergeCommit: (if $s == "MERGED" then {oid: "2222222222222222222222222222222222222222"} else null end),
       closingIssuesReferences: [{number: 7}]}'
 }
-pending='[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]'
-red='[{"name":"ci","status":"COMPLETED","conclusion":"FAILURE"}]'
+pending='[{"name":"ci","status":"IN_PROGRESS","conclusion":"","isRequired":true}]'
+red='[{"name":"ci","status":"COMPLETED","conclusion":"FAILURE","isRequired":true}]'
+optional_red='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS","isRequired":true},{"name":"fuzz","status":"COMPLETED","conclusion":"FAILURE","isRequired":false}]'
 lane() { # expected-exit dir args...
   local code=0 want="$1" dir="$2"; shift 2
   out="$(cd "$dir" && FAKE="$land" ISSUE_LANE_POLL_SECONDS=0 PATH="$land/bin:$PATH" \
@@ -135,7 +136,7 @@ run_land() { lane "$1" "$land" land 7 --pr 9 --head "$H" "${@:2}"; }
   snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
 run_land 0
 grep -q -- '--disable-auto' "$land/calls" || fail "self-test: land kept an auto-merge queued while watching"
-grep -qx "api -X PUT repos/o/r/pulls/9/merge -f merge_method=squash -f sha=$H" "$land/calls" \
+grep -qx "api -X PUT repos/o/r/pulls/9/merge -f merge_method=squash -f sha=$H -f commit_title=feat: x (#9)" "$land/calls" \
   || fail "self-test: land did not merge pinned to the reviewed head"
 if grep -q -- '--auto' "$land/calls"; then fail "self-test: land queued a GitHub auto-merge, which later pushes can outlive"; fi
 grep -qx "git push --quiet --force-with-lease=refs/heads/feat/7:$H origin :refs/heads/feat/7" "$land/calls" \
@@ -175,6 +176,23 @@ if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged into 
 echo git@github.com:o/r.git > "$land/origin"; : > "$land/calls"
 { snap OPEN "$H" false '[]' CLEAN; snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
 run_land 0 --timeout-min 0
+
+# A failed optional check blocks until named as inherited; a required one
+# blocks even when named.
+echo CLOSED > "$land/issue_state"; echo "$H" > "$land/branch_sha"; : > "$land/calls"
+snap OPEN "$H" false "$optional_red" UNSTABLE > "$land/seq"
+run_land 5
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged over an unaccepted optional failure"; fi
+{ snap OPEN "$H" false "$optional_red" UNSTABLE; snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
+run_land 0 --accept-failed fuzz
+grep -q 'merge_method=squash' "$land/calls" || fail "self-test: land did not merge over an accepted optional failure"
+: > "$land/calls"
+snap OPEN "$H" false "$red" BLOCKED > "$land/seq"
+run_land 5 --accept-failed ci
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land accepted a failed required check"; fi
+snap OPEN "$H" false '[]' CLEAN | jq -c '.checksComplete = false' > "$land/seq"
+run_land 5
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged without seeing every check"; fi
 
 # Self-test: push adopts a publish that stopped before syncing: GitHub holds a
 # copy of HEAD (same tree, parent already local) that HEAD does not contain.
