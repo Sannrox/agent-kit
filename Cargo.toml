@@ -1,0 +1,11 @@
+[workspace]
+members = ["crates/fencing-lease"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.85"
+
+[profile.dev.package."*"]
+debug = false
