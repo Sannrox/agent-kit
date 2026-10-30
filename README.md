@@ -28,6 +28,17 @@ with `git push` says so in `AGENTS.md`. It cannot carry file modes: a
 through their interpreter (`sh`, `bash`, `python3`); checks never require the
 executable bit.
 
+## fencing-lease
+
+Rust crate for named fencing leases used by standalone engines. Pattern:
+[docs/decisions/0001-standalone-engine-ha.md](docs/decisions/0001-standalone-engine-ha.md).
+Default features: in-memory store and a local lock file. Optional features:
+`postgres`, `kubernetes`.
+
+```toml
+fencing-lease = { git = "https://github.com/Sannrox/agent-kit", package = "fencing-lease" }
+```
+
 ## The stub pattern
 
 This follows the [OpenClaw agent-skills](https://github.com/openclaw/agent-skills)

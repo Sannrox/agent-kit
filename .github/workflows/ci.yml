@@ -14,3 +14,18 @@ jobs:
       - run: bash scripts/validate-kit.sh
       - name: ShellCheck
         run: shellcheck -S warning scripts/*.sh skills/*/scripts/*.sh
+
+  rust:
+    name: fencing-lease
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo test --locked --workspace
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace --features postgres,kubernetes
+      - run: cargo clippy --locked --workspace --all-targets --features postgres,kubernetes -- -D warnings

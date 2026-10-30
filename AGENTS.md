@@ -12,15 +12,23 @@ in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
 `scripts/check-consumer.sh` is the consumer drift check;
 `scripts/validate-workflow-skills.sh` is the vendored wrapper consumers run;
 `scripts/gh-verified-push.sh` is the canonical publisher for GitHub-signed
-commits; lanes run it from the kit through `issue-lane.sh push`. `scripts/validate-kit.sh` is this repository's gate.
+commits; lanes run it from the kit through `issue-lane.sh push`. `scripts/validate-kit.sh` is this repository's skill gate.
+The `fencing-lease` crate lives in `crates/fencing-lease` (workspace root
+`Cargo.toml`). The HA pattern is `docs/decisions/0001-standalone-engine-ha.md`.
 Read `README.md` before changing the stub contract.
 
 ## Build, Test, and Development Commands
 
 - `bash scripts/validate-kit.sh` validates canonical skills and self-tests the
-  consumer check. It is the local gate.
-- CI (`.github/workflows/ci.yml`) runs that script, then
-  `shellcheck -S warning scripts/*.sh skills/*/scripts/*.sh`.
+  consumer check. It is the skill gate.
+- Crate gate (from the workspace root, with `CARGO_TARGET_DIR` local to this
+  tree):
+  `cargo fmt --all -- --check`,
+  `cargo test --locked --workspace`,
+  `cargo clippy --locked --workspace --all-targets -- -D warnings`,
+  and the same test/clippy commands with `--features postgres,kubernetes`.
+- CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, and the
+  crate gate.
 
 GitHub Issues are the planning source of truth. Shared skills stay in
 `skills/`; this repository has no `.agents/skills/` stubs of its own. Never
@@ -148,7 +156,8 @@ planned work with neither is not a running lane.
 Parallel lanes must not collide. Collision surfaces in this repository are
 `skills/`, `templates/`, `scripts/check-consumer.sh`,
 `scripts/validate-kit.sh`, `scripts/validate-workflow-skills.sh`,
-`scripts/gh-verified-push.sh`, and the stub/profile contract in `README.md`.
+`scripts/gh-verified-push.sh`, the stub/profile contract in `README.md`,
+`crates/`, `Cargo.toml`, `Cargo.lock`, and `docs/decisions/`.
 Lanes that would both change one of these surfaces run in sequence, not in
 parallel.
 
@@ -206,7 +215,9 @@ stubs, and leftover `.agents/project.md`.
 Add focused checks in `scripts/validate-kit.sh` for changes touching skill
 frontmatter, required headings, the stub template, vendored scripts, or the
 consumer check. Prefer deterministic fixture renders that do not need GitHub.
-`bash scripts/validate-kit.sh` must stay green offline.
+`bash scripts/validate-kit.sh` must stay green offline. Crate changes add
+focused `cargo test -p fencing-lease` coverage plus the crate gate above.
+PostgreSQL backend tests run only when `FENCING_LEASE_POSTGRES_URL` is set.
 
 ## Commit & Pull Request Guidelines
 
@@ -275,6 +286,7 @@ Rows beyond `## Testing Guidelines`:
 | --- | --- |
 | skill contract | `bash scripts/validate-kit.sh` |
 | shell scripts | `shellcheck -S warning scripts/*.sh skills/*/scripts/*.sh` |
+| fencing-lease crate | `cargo fmt --all -- --check`; `cargo test --locked --workspace`; `cargo clippy --locked --workspace --all-targets -- -D warnings`; same test/clippy with `--features postgres,kubernetes` |
 
 ### Release audit
 
