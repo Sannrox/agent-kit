@@ -96,7 +96,8 @@ CI. There is no `.agents/project.md`; the check fails if one exists.
 ## Versioning and drift
 
 There is no pinning, exactly like OpenClaw: consumers always use the latest
-`main`. Tags may exist for history, but nothing references them.
+`main`. Signed annotated `v*` tags publish a GitHub Release for history and
+Tenkai; consumers still do not pin them. See `RELEASING.md`.
 
 - `scripts/validate-workflow-skills.sh` (run in each consumer's CI) clones or
   fast-forwards `~/.agents/agent-kit` to `main`, then fails when a default
@@ -106,8 +107,9 @@ There is no pinning, exactly like OpenClaw: consumers always use the latest
   `AGENTS.md` lacks a required heading, or `.agents/project.md` still exists.
 - Because consumers track `main`, a change here to the stub template, the
   vendored scripts, skill names or `## Agent skill profile` headings turns consumer CI red
-  until they re-run `--render`. Treat those as breaking: announce them in
-  `CHANGELOG.md` and open the re-render PRs together with the change.
+  until they re-run `--render`. Treat those as breaking: announce them in the
+  pull request (CHANGELOG is release-owned) and open the re-render PRs
+  together with the change.
 - Opt-in skills (`sekai-ontology`) are added by creating
   `.agents/skills/<name>/` and running `--render`.
 
@@ -121,7 +123,8 @@ so the kit is installed and current before the agent starts.
 ## Development
 
 `bash scripts/validate-kit.sh` validates the canonical skills and self-tests the
-consumer check. Commits are published with `scripts/gh-verified-push.sh`.
+consumer check. `bash scripts/validate-release.sh` checks the signed-tag
+release path. Commits are published with `scripts/gh-verified-push.sh`.
 
 ## License
 
