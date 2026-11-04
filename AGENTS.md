@@ -29,8 +29,9 @@ contract.
   `cargo test --locked --workspace`,
   `cargo clippy --locked --workspace --all-targets -- -D warnings`,
   and the same test/clippy commands with `--features postgres,kubernetes`.
-- `bash scripts/validate-release.sh` checks the tag-triggered release path
-  (script self-tests, workflow gates, dry-run package does not publish).
+- `bash scripts/validate-release.sh` checks the release path: a `v*` tag
+  only dispatches `release.yml` on `main` (script self-tests, workflow gates,
+  dry-run package does not publish).
 - CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, the
   crate gate, and the release-script gate.
 
