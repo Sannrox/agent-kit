@@ -94,6 +94,20 @@ grep -F "needs: [verify-tag, package, attest]" "$workflow" >/dev/null \
   || fail "${workflow} must publish only after every asset job, so a re-run can resume the draft"
 grep -F -- "--exclude '*-*' \"\${GIT_SHA}^\"" scripts/release-package.sh >/dev/null \
   || fail "release-package.sh must take gate flags since the previous final tag in the release commit's history"
+# A retry runs later than the tag: gate flags come only from pull requests
+# merged into the release commit, never from ones merged after it.
+grep -F 'query="merged:<=$(TZ=UTC git log -1' scripts/release-package.sh >/dev/null \
+  || fail "release-package.sh must bound the gate-flag search at the release commit"
+grep -F 'in_range[$1] { print $2 }' scripts/release-package.sh >/dev/null \
+  || fail "release-package.sh must keep only gate flags of pull requests in the release range"
+# The lookup hides gh failures, so a missing permission would silently drop
+# every gate flag.
+python3 - "$workflow" <<'PY_PR' || fail "${workflow} package job must request pull-requests: read for gate flags"
+import re, sys
+body = open(sys.argv[1]).read().split("\njobs:\n", 1)[1]
+jobs = {b.split(":", 1)[0].strip(): b for b in re.split(r"(?m)^(?=  [a-z][a-z0-9-]*:\n)", body)}
+sys.exit(0 if "      pull-requests: read" in jobs.get("package", "") else 1)
+PY_PR
 grep -F "id-token: write" "$workflow" >/dev/null || fail "${workflow} must request id-token for provenance"
 grep -F "attestations: write" "$workflow" >/dev/null || fail "${workflow} must request attestations permission"
 head_perm="$(sed -n '1,/^jobs:/p' "$workflow")"
