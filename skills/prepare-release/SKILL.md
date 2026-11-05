@@ -12,9 +12,13 @@ GitHub state unless the maintainer explicitly authorizes that action.
 
 ## Procedure
 
-1. Identify the target version, base tag, target commit, and milestone or merged
-   PR range. Read the version source named in `AGENTS.md`, CI, and open
-   release-blocking Issues. Complete when the exact release contents are bounded.
+1. Identify the target version, base tag, target commit, merged PR range, and
+   the milestone titled with the target version (milestones are release
+   versions; see `shape-work-item`). Read the version source named in
+   `AGENTS.md`, CI, and open release-blocking Issues. Every open Issue in the
+   version milestone is either closed by this release or moved to a later
+   version milestone by the maintainer; list each one as closed, moved, or
+   blocking. Complete when the exact release contents are bounded.
 2. Classify changes as `Added`, `Changed`, `Fixed`, `Security`, or `Migration`.
    Check SemVer fit; before `1.0`, call out all public breaking changes even when
    they fit a minor bump. Complete when every user-visible merged change is
@@ -40,6 +44,7 @@ GitHub state unless the maintainer explicitly authorizes that action.
 
 ## Output
 
-Return the target, commit range, readiness checklist, validation results,
-compatibility notes, release-note draft, and blockers. Separate verified facts
+Return the target, commit range, the version milestone's Issues (closed,
+moved, or blocking), readiness checklist, validation results, compatibility
+notes, release-note draft, and blockers. Separate verified facts
 from recommendations.
