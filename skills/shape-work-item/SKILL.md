@@ -40,6 +40,12 @@ explicitly authorizes publishing to GitHub.
    environment inventory from any text that will be published to GitHub.
 5. Recommend labels (`type:*`, `area:*`, `status:ready` when ready). Do not
    invent priority, assignment, or sprint.
+6. Milestones are release versions. A milestone is titled with the exact
+   version it ships in (for example `0.9.0`) and describes its theme in the
+   milestone description, so anyone waiting on an Issue can see which release
+   carries it. Never create a thematic or named milestone. Put an Issue in a
+   version milestone only when the maintainer names that version; do not
+   choose one.
 
 ## Output
 
