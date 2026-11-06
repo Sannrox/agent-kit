@@ -29,6 +29,10 @@ for stage in '## Establish the authority ceiling' '## Deliver the Issue' '### 1.
   '### 5. Publish when authorized' '### 6. Land when authorized' '## Report completion' '## Boundaries'; do
   require_line skills/deliver-ready-issue/SKILL.md "$stage"
 done
+for stage in '## Establish the authority ceiling' '## Prepare the release' '## Publish the version bump' \
+  '## Establish the release' '## Output' '## Boundaries'; do
+  require_line skills/prepare-release/SKILL.md "$stage"
+done
 for ref in references/parallel-delivery.md scripts/issue-lane.sh; do
   [ -f "skills/deliver-ready-issue/${ref}" ] || fail "missing skills/deliver-ready-issue/${ref}"
   grep -Fq "$ref" skills/deliver-ready-issue/SKILL.md || fail "deliver-ready-issue does not link ${ref}"

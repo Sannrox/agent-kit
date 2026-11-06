@@ -23,6 +23,9 @@ or lightweight tags.
    GitHub Release body.
 3. Land the version-bump pull request. Workspace crates move in lockstep.
 
+An agent runs these steps with `prepare-release` under Release authority,
+then hands the maintainer the tag command and verifies the published release.
+
 ## Tag
 
 Create an annotated, signed tag on the merged release commit on `main`:
