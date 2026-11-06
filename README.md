@@ -12,7 +12,7 @@ hand-copying long `SKILL.md` files.
 | `assess-change-impact` | yes | Map a change across boundaries before implementation or review |
 | `capture-project-decision` | yes | Record an accepted decision in the smallest durable artifact |
 | `deliver-ready-issue` | yes | Deliver a ready Issue in an isolated worktree lane (`scripts/issue-lane.sh`) |
-| `prepare-release` | yes | Audit release scope, compatibility and notes |
+| `prepare-release` | yes | Audit a release, then with authority land the version bump and verify the published release |
 | `refactor-docs` | yes | Restructure documentation without losing facts |
 | `shape-work-item` | yes | Turn a raw idea into a focused GitHub Issue |
 | `technical-documentation` | yes | Build or review technical documentation |
