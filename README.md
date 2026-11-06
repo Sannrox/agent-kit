@@ -18,6 +18,7 @@ hand-copying long `SKILL.md` files.
 | `technical-documentation` | yes | Build or review technical documentation |
 | `verify-change` | yes | Proportionate verification with an exact evidence report |
 | `sekai-ontology` | opt-in | Sekai ontology CLI workflow, only for repos that work with the ontology |
+| `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 
 Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
 consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
@@ -88,6 +89,7 @@ repository's `AGENTS.md`:
 | extra verification rows | `### Verification matrix` |
 | release checklist | `### Release audit` |
 | impact boundaries not covered above | optional `### Additional impact boundaries` |
+| UI commands, mocks and design constraints (`ui-e2e`) | optional `### UI proof` |
 
 `## Agent skill profile` holds only what the other sections do not already say
 (see `templates/agent-skill-profile.md`); its headings are a contract checked in
