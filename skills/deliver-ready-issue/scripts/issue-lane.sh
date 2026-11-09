@@ -21,8 +21,17 @@
 # push publishes the lane branch with GitHub-verified commits through this
 # kit's gh-verified-push.sh and resets the checkout to the published commit, so
 # local HEAD equals the Pull Request head afterwards. It refuses a checkout
-# rebased onto, or merged with, the default branch after the publish and names
-# the recovery (close the Pull Request, release --yes, claim, push).
+# merged with the default branch, and one rebased onto it after the publish
+# unless --rebased is given. push --rebased publishes the rebased lane in two
+# steps: it publishes the delta from the new base (the merge base of HEAD and
+# the default branch) to HEAD as one verified commit on the scratch branch
+# lane-publish/<issue>/rebase, then moves the claim branch onto that commit
+# with one ref update guarded by the old tip, and deletes the scratch branch.
+# It moves the claim branch only from a tip this checkout itself held (found
+# in its reflog), so a stale checkout never overwrites newer published work,
+# and the Pull Request head never points at a commit the default branch
+# already holds. A crash before the move leaves the claim branch untouched
+# (run push --rebased again); a crash after it is adopted by the next push.
 #
 # land withdraws any queued auto-merge, watches the Pull Request until its
 # checks settle, then squash-merges it through the REST merge endpoint with the
@@ -40,7 +49,7 @@
 #   bash issue-lane.sh check <issue> [--json]
 #   bash issue-lane.sh claim <issue> [--dry-run]
 #   bash issue-lane.sh release <issue> [--yes]
-#   bash issue-lane.sh push <issue>
+#   bash issue-lane.sh push <issue> [--rebased]
 #   bash issue-lane.sh land <issue> --pr <number> [--head <sha>] [--timeout-min <n>]
 #       [--accept-failed <check>]...
 #
@@ -96,6 +105,7 @@ json_output=false
 dry_run=false
 confirm=false
 self_test=false
+rebased=false
 land_pr=""
 land_head=""
 timeout_min=45
@@ -106,6 +116,7 @@ while [ "$#" -gt 0 ]; do
     --dry-run) dry_run=true ;;
     --yes) confirm=true ;;
     --self-test) self_test=true ;;
+    --rebased) rebased=true ;;
     --pr | --head | --timeout-min | --accept-failed)
       [ "$#" -ge 2 ] || usage
       case "$1" in
@@ -133,6 +144,7 @@ esac
 [ "$command_name" = land ] || { [ -z "$land_pr$land_head" ] && [ "$accepted_failures" = '[]' ]; } \
   || fail "--pr, --head, and --accept-failed belong to land"
 [ "$command_name" = capacity ] || [ "$self_test" = false ] || fail "--self-test belongs to capacity"
+[ "$command_name" = push ] || [ "$rebased" = false ] || fail "--rebased belongs to push"
 printf '%s' "$LANE_LIMIT" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_LIMIT must be a positive whole number"
 
 # Claim branches are <type>/<issue> or <type>/<issue>-<slug>.
@@ -395,6 +407,11 @@ local_work_since() {
     && [ "$(git rev-list --count "$1..HEAD")" = "$(git rev-list --count "$1..HEAD" "^${default_tip}")" ]
 }
 
+# True when this checkout's HEAD or branch $1 once pointed at commit $2.
+held_locally() {
+  { git log -g --format=%H HEAD 2>/dev/null; git log -g --format=%H "refs/heads/$1" 2>/dev/null; } | grep -x "$2" >/dev/null
+}
+
 # The Pull Request fields land decides on. Check runs report status plus
 # conclusion; commit statuses report state.
 land_pr_json() {
@@ -606,7 +623,13 @@ case "$command_name" in
       || fail "${default_branch} is not readable on origin"
     default_tip="${default_tip%%[[:space:]]*}"
     git fetch --quiet origin "$remote_tip" "$default_tip"
-    recover="verified publishing cannot rewrite or merge history. Recover: close the Pull Request, run release ${issue} --yes, claim ${issue}, push ${issue} from the new base, and open a new Pull Request"
+    scratch="lane-publish/${issue}/rebase"
+    if [ "$rebased" = true ]; then
+      # A scratch branch left by an earlier push --rebased is ours: the claim
+      # makes this lane the Issue's only owner.
+      gh api -X DELETE "repos/${repo}/git/refs/heads/${scratch}" >/dev/null 2>&1 || true
+    fi
+    recover="verified publishing cannot publish a merge. Recover: rebase onto ${default_branch} instead and run push ${issue} --rebased"
     # The branch already holds HEAD: either nothing changed since the last
     # publish (identical tree), or a publish stopped before syncing and left
     # GitHub's copy of HEAD on top of local history. Adopt the verified tip
@@ -629,12 +652,41 @@ case "$command_name" in
     # Publish only on top of what is on GitHub: a stale or rebased checkout
     # would overwrite or misplace published commits, and a merge commit
     # cannot be published at all.
-    git merge-base --is-ancestor "$remote_tip" HEAD \
-      || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); it was rebased or rewritten after the publish. ${recover}"
-    [ -z "$(git rev-list --min-parents=2 --max-count=1 "${remote_tip}..HEAD")" ] \
-      || fail "local history of ${current} merges another branch after ${remote_tip:0:12}; ${recover}"
-    bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$current" \
-      --expected-oid "$remote_tip" --sync-local
+    if git merge-base --is-ancestor "$remote_tip" HEAD; then
+      [ -z "$(git rev-list --min-parents=2 --max-count=1 "${remote_tip}..HEAD")" ] \
+        || fail "local history of ${current} merges another branch after ${remote_tip:0:12}; ${recover}"
+      bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$current" \
+        --expected-oid "$remote_tip" --sync-local
+      exit 0
+    fi
+    [ "$rebased" = true ] \
+      || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); it was rebased or rewritten after the publish. If it was rebased onto ${default_branch}, run push ${issue} --rebased"
+    held_locally "$current" "$remote_tip" \
+      || fail "${current} on origin (${remote_tip:0:12}) was never held by this checkout; fetch and rebase the published work before push --rebased"
+    new_base="$(git merge-base HEAD "$default_tip")" \
+      || fail "local HEAD shares no history with ${default_branch}"
+    local_work_since "$new_base" \
+      || fail "local history of ${current} merges another branch after ${new_base:0:12}; ${recover}"
+    [ "$(git rev-parse "${new_base}^{tree}")" != "$(git rev-parse 'HEAD^{tree}')" ] \
+      || fail "local HEAD holds no change on top of ${default_branch} (${new_base:0:12}); nothing to publish"
+    [ -z "$(git status --porcelain)" ] || fail "working tree is dirty; commit or discard before publishing"
+    # Step 1: one verified commit with parent new_base, off the Pull Request.
+    published="$(bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$scratch" \
+      --create-branch-from "$new_base")"
+    printf '%s' "$published" | grep -Eq '^[0-9a-f]{40}$' || fail "publishing ${scratch} returned no commit"
+    # Step 2: move the claim branch onto it, only from the tip this checkout held.
+    repo_id="$(gh api "repos/${repo}" --jq .node_id)"
+    jq -n --arg id "$repo_id" --arg ref "refs/heads/${current}" --arg before "$remote_tip" --arg after "$published" '{
+      query: "mutation($input: UpdateRefsInput!) { updateRefs(input: $input) { clientMutationId } }",
+      variables: {input: {repositoryId: $id, refUpdates: [{name: $ref, beforeOid: $before, afterOid: $after, force: true}]}}}' \
+      | gh api graphql --input - | jq -e '(.errors // []) | length == 0' >/dev/null \
+      || fail "GitHub did not confirm moving ${current} from ${remote_tip:0:12} to ${published:0:12}; run push ${issue} --rebased again, which adopts the move if it happened and refuses if ${current} moved elsewhere"
+    gh api -X DELETE "repos/${repo}/git/refs/heads/${scratch}" >/dev/null 2>&1 \
+      || printf 'issue-lane: could not delete %s; the next push %s --rebased deletes it\n' "$scratch" "$issue" >&2
+    git fetch --quiet origin "$published"
+    git reset --quiet --hard "$published"
+    printf 'issue-lane: moved %s from %s onto %s at %s\n' "$current" "${remote_tip:0:12}" "${default_branch}" "${new_base:0:12}" >&2
+    printf '%s\n' "$published"
     ;;
 
   land)

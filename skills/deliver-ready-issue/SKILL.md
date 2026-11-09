@@ -166,13 +166,14 @@ mark the Issue unless documented maintainer policy requires it.
    the worktree to the published commit, so local `HEAD` is the Pull Request
    head. It refuses a dirty tree, a branch outside the lane, a branch that was
    never claimed, and a checkout that does not descend from the published
-   branch. Refresh onto `main` before the first publish; a refresh after it
-   rewrites history that verified publishing cannot replace yet
-   (Sannrox/agent-kit#8), so report such a lane blocked instead of forcing it.
-   `push` refuses a rebased or merged branch, even one that keeps the
-   published tree, and names the recovery: close the Pull Request,
-   `release <issue> --yes`, `claim <issue>`, `push <issue>`, and open a new
-   Pull Request. Confirm it reports `verification.verified=true`. Publish
+   branch. `push` refuses a rebased or merged branch, even one that keeps
+   the published tree. Refresh after a publish by rebasing onto `main`, never
+   by merging it, then publish with `push <issue> --rebased`: it publishes the
+   rebased work as one verified commit on the scratch branch
+   `lane-publish/<issue>/rebase` and moves the claim branch onto it with one
+   ref update guarded by the old tip, only when this checkout once held that
+   tip. If it stops, run it again; it never overwrites work another checkout
+   published. Confirm it reports `verification.verified=true`. Publish
    with `git push` instead only when `AGENTS.md` (`### Verified commits on
    GitHub`) says the repository does, or the user asks.
 3. Open the Pull Request as a draft with the first published commit, then mark
@@ -209,7 +210,8 @@ mark the Issue unless documented maintainer policy requires it.
    claim branch on GitHub. Run it in the background and keep working while the
    checks run. Exit 4: the head moved; review the new head and land again.
    Exit 5: a failed check, a conflict, or a branch behind `main`; fix it under
-   the landing rules below, `push`, and land again. Exit 6: still not
+   the landing rules below, `push` (`push --rebased` after a rebase onto
+   `main`), and land again. Exit 6: still not
    mergeable when the watch timed out; land again to keep watching. Exit 7:
    merged, but a postcondition is unconfirmed; land again to recheck. A
    timeout ends observation, not the task.
