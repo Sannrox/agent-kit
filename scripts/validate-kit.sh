@@ -95,8 +95,10 @@ case "$*" in
   "api user"*) echo me ;;
   "issue view 7 --json state"*) cat "$FAKE/issue_state" ;;
   "issue view 7 --json"*) echo '{"number":7,"title":"feat: x","state":"OPEN","labels":[],"assignees":[],"closedByPullRequestsReferences":[]}' ;;
-  "api graphql"*) head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
-  "pr merge"* | "api -X DELETE"* | "api -X PUT"*) echo "$*" >> "$FAKE/calls" ;;
+  "api graphql"*) case "$*" in *--input*) cat >> "$FAKE/graphql_in" ;; esac; head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
+  "pr merge"* | "api -X DELETE"* | "api -X PUT"* | "api -X POST"*) echo "$*" >> "$FAKE/calls" ;;
+  "api repos/o/r --jq .node_id") echo R_1 ;;
+  "api repos/o/r/git/commits/"*) printf '{"tree":{"sha":"%s"}}\n' "$(cat "$FAKE/tree")" ;;
   "api repos/o/r/compare/"*) echo ahead ;;
   "api repos/o/r/commits/"*) echo true ;;
   *) echo "fake gh: unexpected $*" >&2; exit 1 ;;
@@ -105,13 +107,14 @@ FAKE
 chmod +x "$land/bin/gh"
 # The fake git serves the claim branch from branch_sha ("absent" for none,
 # "error" for a failed lookup) and main from default_sha, answers
-# `remote get-url` from origin, and records pushes; everything else goes to
-# the real git.
+# `remote get-url` from origin, and records pushes; the scratch branch of push
+# --rebased is absent; everything else goes to the real git.
 real_git="$(command -v git)"
 cat > "$land/bin/git" <<FAKE
 #!/usr/bin/env bash
 case "\$1" in
-  ls-remote) case "\$*" in *refs/heads/main) printf '%s\trefs/heads/main\n' "\$(cat "\$FAKE/default_sha")"; exit 0 ;; esac
+  ls-remote) case "\$*" in *lane-publish/*) exit 2 ;; esac
+    case "\$*" in *refs/heads/main) printf '%s\trefs/heads/main\n' "\$(cat "\$FAKE/default_sha")"; exit 0 ;; esac
     sha="\$(cat "\$FAKE/branch_sha")"; [ "\$sha" = absent ] && exit 2; [ "\$sha" = error ] && exit 128; printf '%s\trefs/heads/feat/7\n' "\$sha" ;;
   push | fetch) echo "git \$*" >> "\$FAKE/calls" ;;
   remote) cat "\$FAKE/origin"; case "\$*" in *--push*) [ -f "\$FAKE/push_origin" ] && cat "\$FAKE/push_origin" ;; esac; true ;;
@@ -233,10 +236,43 @@ rg rebase -q -X theirs main >/dev/null
 rebased="$(rg rev-parse HEAD)"
 lane 1 "$land/repo" push 7
 [ "$(rg rev-parse HEAD)" = "$rebased" ] || fail "self-test: push reset away a rebase onto main that keeps the published tree"
-printf '%s\n' "$out" | grep -q 'rebased.*release 7 --yes, claim 7' || fail "self-test: push did not name the rebase recovery: $out"
+printf '%s\n' "$out" | grep -q 'rebased.*push 7 --rebased' || fail "self-test: push did not name the rebase recovery: $out"
 rg reset -q --hard "$(cat "$land/branch_sha")" && rg merge -q -s ours -m "merge main" main
 merged="$(rg rev-parse HEAD)"
 lane 1 "$land/repo" push 7
 [ "$(rg rev-parse HEAD)" = "$merged" ] || fail "self-test: push reset away a merge of main that keeps the published tree"
-printf '%s\n' "$out" | grep -q 'merges another branch.*release 7 --yes' || fail "self-test: push did not name the merge recovery: $out"
+printf '%s\n' "$out" | grep -q 'merges another branch.*push 7 --rebased' || fail "self-test: push did not name the merge recovery: $out"
+
+# Self-test: push --rebased publishes the rebased lane as one verified commit
+# on a scratch branch from the new base, then moves the claim branch onto it
+# guarded by the published tip T. A failed publish never moves the branch.
+T="$(cat "$land/branch_sha")"
+rg reset -q --hard "$rebased"
+rg rev-parse 'HEAD^{tree}' > "$land/tree"
+copy="$(rg commit-tree "$(cat "$land/tree")" -p "$(cat "$land/default_sha")" -m published)"
+: > "$land/calls"; : > "$land/graphql_in"
+echo '{"errors":[{"message":"boom"}]}' > "$land/seq"
+lane 1 "$land/repo" push 7 --rebased
+if grep -q updateRefs "$land/graphql_in"; then fail "self-test: push --rebased moved the claim branch after a failed publish"; fi
+[ "$(rg rev-parse HEAD)" = "$rebased" ] || fail "self-test: a failed push --rebased moved local HEAD"
+rg commit-tree "$T^{tree}" -p "$T" -m "published elsewhere" > "$land/branch_sha"
+: > "$land/calls"
+lane 1 "$land/repo" push 7 --rebased
+printf '%s\n' "$out" | grep -q 'never held by this checkout' || fail "self-test: push --rebased overwrote a tip it never held: $out"
+if grep -q 'POST' "$land/calls"; then fail "self-test: push --rebased published over a tip it never held"; fi
+echo "$T" > "$land/branch_sha"; : > "$land/calls"; : > "$land/graphql_in"
+{ printf '{"data":{"createCommitOnBranch":{"commit":{"oid":"%s","url":null}}}}\n' "$copy"
+  echo '{"data":{"updateRefs":{"clientMutationId":null}}}'; } > "$land/seq"
+lane 0 "$land/repo" push 7 --rebased
+grep -q "api -X POST repos/o/r/git/refs -f ref=refs/heads/lane-publish/7/rebase -f sha=$(cat "$land/default_sha")" "$land/calls" \
+  || fail "self-test: push --rebased did not publish on a scratch branch from the new base"
+jq -se --arg main "$(cat "$land/default_sha")" 'map(select(.query | contains("createCommitOnBranch")))[0].variables.input
+  | .expectedHeadOid == $main and .branch.branchName == "lane-publish/7/rebase"' "$land/graphql_in" >/dev/null \
+  || fail "self-test: push --rebased did not publish the delta onto the new base"
+jq -se --arg t "$T" --arg c "$copy" 'map(select(.query | contains("updateRefs")))[0].variables.input.refUpdates
+  == [{name: "refs/heads/feat/7", beforeOid: $t, afterOid: $c, force: true}]' "$land/graphql_in" >/dev/null \
+  || fail "self-test: push --rebased did not move the claim branch guarded by the published tip"
+[ "$(grep -c 'api -X DELETE repos/o/r/git/refs/heads/lane-publish/7/rebase' "$land/calls")" = 2 ] \
+  || fail "self-test: push --rebased did not clear the scratch branch before and after"
+[ "$(rg rev-parse HEAD)" = "$copy" ] || fail "self-test: push --rebased left HEAD off the new Pull Request head"
 printf 'agent-kit validation passed\n'
