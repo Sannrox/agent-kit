@@ -168,7 +168,11 @@ mark the Issue unless documented maintainer policy requires it.
    never claimed, and a checkout that does not descend from the published
    branch. Refresh onto `main` before the first publish; a refresh after it
    rewrites history that verified publishing cannot replace yet
-   (Sannrox/agent-kit#8), so report such a lane blocked instead of forcing it. Confirm it reports `verification.verified=true`. Publish
+   (Sannrox/agent-kit#8), so report such a lane blocked instead of forcing it.
+   `push` refuses a rebased or merged branch, even one that keeps the
+   published tree, and names the recovery: close the Pull Request,
+   `release <issue> --yes`, `claim <issue>`, `push <issue>`, and open a new
+   Pull Request. Confirm it reports `verification.verified=true`. Publish
    with `git push` instead only when `AGENTS.md` (`### Verified commits on
    GitHub`) says the repository does, or the user asks.
 3. Open the Pull Request as a draft with the first published commit, then mark

@@ -20,7 +20,9 @@
 #
 # push publishes the lane branch with GitHub-verified commits through this
 # kit's gh-verified-push.sh and resets the checkout to the published commit, so
-# local HEAD equals the Pull Request head afterwards.
+# local HEAD equals the Pull Request head afterwards. It refuses a checkout
+# rebased onto, or merged with, the default branch after the publish and names
+# the recovery (close the Pull Request, release --yes, claim, push).
 #
 # land withdraws any queued auto-merge, watches the Pull Request until its
 # checks settle, then squash-merges it through the REST merge endpoint with the
@@ -385,6 +387,14 @@ published_copy_of() {
     <(git ls-tree -r --format='%(path)%x09%(objectmode) %(objecttype) %(objectname)' "$2")
 }
 
+# True when $1..HEAD is plain local work: no merge commit and no commit the
+# default branch tip ($default_tip) holds. A local rebase onto, or merge of,
+# the default branch fails this, even when it keeps the published tree.
+local_work_since() {
+  [ -z "$(git rev-list --min-parents=2 --max-count=1 "$1..HEAD")" ] \
+    && [ "$(git rev-list --count "$1..HEAD")" = "$(git rev-list --count "$1..HEAD" "^${default_tip}")" ]
+}
+
 # The Pull Request fields land decides on. Check runs report status plus
 # conclusion; commit statuses report state.
 land_pr_json() {
@@ -592,13 +602,22 @@ case "$command_name" in
     remote_tip="$(git ls-remote --exit-code origin "refs/heads/${current}")" \
       || fail "${current} is not readable on origin; claim #${issue} first"
     remote_tip="${remote_tip%%[[:space:]]*}"
-    git fetch --quiet origin "$remote_tip"
+    default_tip="$(git ls-remote --exit-code origin "refs/heads/${default_branch}")" \
+      || fail "${default_branch} is not readable on origin"
+    default_tip="${default_tip%%[[:space:]]*}"
+    git fetch --quiet origin "$remote_tip" "$default_tip"
+    recover="verified publishing cannot rewrite or merge history. Recover: close the Pull Request, run release ${issue} --yes, claim ${issue}, push ${issue} from the new base, and open a new Pull Request"
     # The branch already holds HEAD: either nothing changed since the last
     # publish (identical tree), or a publish stopped before syncing and left
-    # GitHub's copy of HEAD on top of local history. Adopt the verified tip.
+    # GitHub's copy of HEAD on top of local history. Adopt the verified tip
+    # only when the commits it replaces are plain local work, so a local
+    # rebase or merge of the default branch that happens to keep the
+    # published tree is never reset away.
     if { git merge-base --is-ancestor "$remote_tip" HEAD \
-        && [ "$(git rev-parse "${remote_tip}^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ]; } \
-      || { git merge-base --is-ancestor "${remote_tip}^" HEAD && published_copy_of "$remote_tip" HEAD; }; then
+        && [ "$(git rev-parse "${remote_tip}^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ] \
+        && local_work_since "$remote_tip"; } \
+      || { git merge-base --is-ancestor "${remote_tip}^" HEAD && published_copy_of "$remote_tip" HEAD \
+        && local_work_since "${remote_tip}^"; }; then
       [ "$(gh api "repos/${repo}/commits/${remote_tip}" --jq '.commit.verification.verified')" = true ] \
         || fail "${current} holds HEAD as ${remote_tip:0:12}, but GitHub does not show it Verified"
       [ -z "$(git status --porcelain)" ] || fail "working tree is dirty; commit or discard before syncing"
@@ -608,9 +627,12 @@ case "$command_name" in
       exit 0
     fi
     # Publish only on top of what is on GitHub: a stale or rebased checkout
-    # would overwrite or misplace published commits.
+    # would overwrite or misplace published commits, and a merge commit
+    # cannot be published at all.
     git merge-base --is-ancestor "$remote_tip" HEAD \
-      || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); verified publishing cannot rewrite history"
+      || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); it was rebased or rewritten after the publish. ${recover}"
+    [ -z "$(git rev-list --min-parents=2 --max-count=1 "${remote_tip}..HEAD")" ] \
+      || fail "local history of ${current} merges another branch after ${remote_tip:0:12}; ${recover}"
     bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$current" \
       --expected-oid "$remote_tip" --sync-local
     ;;
