@@ -104,13 +104,15 @@ esac
 FAKE
 chmod +x "$land/bin/gh"
 # The fake git serves the claim branch from branch_sha ("absent" for none,
-# "error" for a failed lookup), answers `remote get-url` from origin, and
-# records pushes; everything else goes to the real git.
+# "error" for a failed lookup) and main from default_sha, answers
+# `remote get-url` from origin, and records pushes; everything else goes to
+# the real git.
 real_git="$(command -v git)"
 cat > "$land/bin/git" <<FAKE
 #!/usr/bin/env bash
 case "\$1" in
-  ls-remote) sha="\$(cat "\$FAKE/branch_sha")"; [ "\$sha" = absent ] && exit 2; [ "\$sha" = error ] && exit 128; printf '%s\trefs/heads/feat/7\n' "\$sha" ;;
+  ls-remote) case "\$*" in *refs/heads/main) printf '%s\trefs/heads/main\n' "\$(cat "\$FAKE/default_sha")"; exit 0 ;; esac
+    sha="\$(cat "\$FAKE/branch_sha")"; [ "\$sha" = absent ] && exit 2; [ "\$sha" = error ] && exit 128; printf '%s\trefs/heads/feat/7\n' "\$sha" ;;
   push | fetch) echo "git \$*" >> "\$FAKE/calls" ;;
   remote) cat "\$FAKE/origin"; case "\$*" in *--push*) [ -f "\$FAKE/push_origin" ] && cat "\$FAKE/push_origin" ;; esac; true ;;
   *) exec "$real_git" "\$@" ;;
@@ -202,6 +204,7 @@ if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged witho
 # copy of HEAD (same tree, parent already local) that HEAD does not contain.
 rg() { git -C "$land/repo" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
 mkdir -p "$land/repo" && rg init -q && rg checkout -q -b feat/7 && printf 'a\n' > "$land/repo/f" && rg add f && rg commit -qm base
+rg rev-parse HEAD > "$land/default_sha"
 printf 'b\n' > "$land/repo/f" && rg commit -qam work
 rg commit-tree "$(rg rev-parse 'HEAD^{tree}')" -p "$(rg rev-parse HEAD^)" -m published > "$land/branch_sha"
 lane 0 "$land/repo" push 7
@@ -216,4 +219,24 @@ if (cd "$land/repo" && FAKE="$land" PATH="$land/bin:$PATH" \
   bash "$ROOT/skills/deliver-ready-issue/scripts/issue-lane.sh" push 7 >/dev/null 2>&1); then
   fail "self-test: push treated a committed mode change as already published"
 fi
+
+# Self-test: push never resets away a local rebase onto, or merge of, main
+# that keeps the published tree. Main and the lane both add g; the lane's
+# copy wins. T is the published lane commit on the old base.
+rg checkout -q --detach HEAD~3 && rg checkout -q -b main
+printf 'main\n' > "$land/repo/g" && rg add g && rg commit -qm "main adds g"
+rg rev-parse HEAD > "$land/default_sha"
+rg checkout -q -B feat/7 HEAD^
+printf 'lane\n' > "$land/repo/g" && printf 'h\n' > "$land/repo/h" && rg add g h && rg commit -qm lane
+rg rev-parse HEAD > "$land/branch_sha"
+rg rebase -q -X theirs main >/dev/null
+rebased="$(rg rev-parse HEAD)"
+lane 1 "$land/repo" push 7
+[ "$(rg rev-parse HEAD)" = "$rebased" ] || fail "self-test: push reset away a rebase onto main that keeps the published tree"
+printf '%s\n' "$out" | grep -q 'rebased.*release 7 --yes, claim 7' || fail "self-test: push did not name the rebase recovery: $out"
+rg reset -q --hard "$(cat "$land/branch_sha")" && rg merge -q -s ours -m "merge main" main
+merged="$(rg rev-parse HEAD)"
+lane 1 "$land/repo" push 7
+[ "$(rg rev-parse HEAD)" = "$merged" ] || fail "self-test: push reset away a merge of main that keeps the published tree"
+printf '%s\n' "$out" | grep -q 'merges another branch.*release 7 --yes' || fail "self-test: push did not name the merge recovery: $out"
 printf 'agent-kit validation passed\n'
