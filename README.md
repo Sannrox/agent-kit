@@ -18,7 +18,7 @@ hand-copying long `SKILL.md` files.
 | `technical-documentation` | yes | Build or review technical documentation |
 | `verify-change` | yes | Proportionate verification with an exact evidence report |
 | `simplify-change` | opt-in | Shrink your own diff to its smallest complete fix before review; `deliver-ready-issue` runs it |
-| `validate-behavior` | opt-in | Source-blind validation of a running app, CLI or API against a behavior contract |
+| `validate-behavior` | opt-in | Source-blind validation of a running app, CLI or API against a behavior contract; `deliver-ready-issue` runs it for observable acceptance criteria |
 | `improve-performance` | opt-in | Measured performance work: count the work, delete waste, cache last |
 | `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 

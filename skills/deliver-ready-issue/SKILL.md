@@ -146,11 +146,21 @@ mark the Issue unless documented maintainer policy requires it.
    findings policy, and when to stop. Fix actionable findings; rerun tests and
    autoreview until the helper exits 0 with no accepted/actionable findings, or
    document a maintainer-judgment blocker in the PR body.
-5. Inspect the final diff for scope, generated artifacts, secrets, and
+5. When the Issue has acceptance criteria a user or operator can observe (a
+   UI flow, CLI output, an API response, a generated file, state that survives
+   a restart), run `validate-behavior` in a fresh subagent that has not seen
+   the implementation. Give it only the acceptance criteria as the contract
+   and access to the running target; read
+   `${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/validate-behavior/SKILL.md`
+   when the repository has no stub. A `fail` blocks publishing: fix, then
+   rerun the affected clauses. Skip it for refactors, docs, CI, and other
+   changes with nothing observable.
+6. Inspect the final diff for scope, generated artifacts, secrets, and
    accidental runtime state.
-6. In the PR description (or implement-only handoff), report the
-   simplify-change deltas, verify-change evidence, **and** the autoreview
-   command + clean/fixed/rejected outcome.
+7. In the PR description (or implement-only handoff), report the
+   simplify-change deltas, verify-change evidence, the autoreview
+   command + clean/fixed/rejected outcome, **and** the validate-behavior
+   clause results or why it was skipped.
 
 ### 5. Publish when authorized
 
@@ -271,8 +281,8 @@ Return to the maintainer in the session (not on GitHub):
   worktree path if useful privately, branch, base SHA, final commit, and Pull
   Request when created;
 - implemented outcome;
-- simplify-change deltas, verification evidence (commands + results), and
-  autoreview closeout;
+- simplify-change deltas, verification evidence (commands + results),
+  autoreview closeout, and validate-behavior results or why it was skipped;
 - merge state and newly available follow-up work when applicable;
 - blockers, skipped checks, and remaining uncertainty.
 
