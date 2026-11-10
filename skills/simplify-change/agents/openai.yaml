@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/simplify-change.
+interface:
+  display_name: "Simplify Change"
+  short_description: "Shrink your own diff to its smallest complete fix"
+  default_prompt: "Use $simplify-change to shrink this branch to its smallest complete fix before review."
