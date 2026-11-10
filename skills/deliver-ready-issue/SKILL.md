@@ -122,10 +122,15 @@ mark the Issue unless documented maintainer policy requires it.
 ### 4. Verify and review
 
 1. Add focused deterministic tests while implementing.
-2. Run `verify-change` and retain exact commands, results, skips, and remaining
+2. Run `simplify-change` on the complete diff against the merge base: cut it
+   to the smallest complete fix and drop tests without a named failure. Read
+   `${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/simplify-change/SKILL.md`
+   when the repository has no stub for it. Keep its report for the Pull
+   Request. After later review repairs, simplify only the new changes.
+3. Run `verify-change` and retain exact commands, results, skips, and remaining
    uncertainty. At minimum for ship: the local gates listed in `AGENTS.md`
    (and the matching jobs in `.github/workflows/ci.yml`). Do not assume Cargo.
-3. Run **`autoreview` before committing** (or before push if already committed).
+4. Run **`autoreview` before committing** (or before push if already committed).
    Do **not** vendor the skill into this repo. Resolve the shared helper (env
    `AUTOREVIEW`, else agent-skills / `AGENTS_HOME` / shared install path—see
    `AGENTS.md` “Agent delivery closeout”). Do not skip because CI is green:
@@ -141,10 +146,11 @@ mark the Issue unless documented maintainer policy requires it.
    findings policy, and when to stop. Fix actionable findings; rerun tests and
    autoreview until the helper exits 0 with no accepted/actionable findings, or
    document a maintainer-judgment blocker in the PR body.
-4. Inspect the final diff for scope, generated artifacts, secrets, and
+5. Inspect the final diff for scope, generated artifacts, secrets, and
    accidental runtime state.
-5. In the PR description (or implement-only handoff), report verify-change
-   evidence **and** the autoreview command + clean/fixed/rejected outcome.
+6. In the PR description (or implement-only handoff), report the
+   simplify-change deltas, verify-change evidence, **and** the autoreview
+   command + clean/fixed/rejected outcome.
 
 ### 5. Publish when authorized
 
@@ -265,7 +271,8 @@ Return to the maintainer in the session (not on GitHub):
   worktree path if useful privately, branch, base SHA, final commit, and Pull
   Request when created;
 - implemented outcome;
-- verification evidence (commands + results) and autoreview closeout;
+- simplify-change deltas, verification evidence (commands + results), and
+  autoreview closeout;
 - merge state and newly available follow-up work when applicable;
 - blockers, skipped checks, and remaining uncertainty.
 

@@ -17,7 +17,9 @@ hand-copying long `SKILL.md` files.
 | `shape-work-item` | yes | Turn a raw idea into a focused GitHub Issue |
 | `technical-documentation` | yes | Build or review technical documentation |
 | `verify-change` | yes | Proportionate verification with an exact evidence report |
-| `sekai-ontology` | opt-in | Sekai ontology CLI workflow, only for repos that work with the ontology |
+| `simplify-change` | opt-in | Shrink your own diff to its smallest complete fix before review; `deliver-ready-issue` runs it |
+| `validate-behavior` | opt-in | Source-blind validation of a running app, CLI or API against a behavior contract |
+| `improve-performance` | opt-in | Measured performance work: count the work, delete waste, cache last |
 | `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 
 Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
@@ -112,7 +114,7 @@ Tenkai; consumers still do not pin them. See `RELEASING.md`.
   until they re-run `--render`. Treat those as breaking: announce them in the
   pull request (CHANGELOG is release-owned) and open the re-render PRs
   together with the change.
-- Opt-in skills (`sekai-ontology`) are added by creating
+- Opt-in skills (such as `ui-e2e`) are added by creating
   `.agents/skills/<name>/` and running `--render`.
 
 ## Offline and cloud agents

@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/validate-behavior.
+interface:
+  display_name: "Validate Behavior"
+  short_description: "Source-blind validation against a behavior contract"
+  default_prompt: "Use $validate-behavior to validate this workflow against a source-blind behavior contract."

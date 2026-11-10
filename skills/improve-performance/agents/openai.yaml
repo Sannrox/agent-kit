@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/improve-performance.
+interface:
+  display_name: "Improve Performance"
+  short_description: "Count the work, delete waste, cache last"
+  default_prompt: "Use $improve-performance to measure this flow, find waste, and prove the speedup."

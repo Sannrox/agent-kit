@@ -16,7 +16,7 @@ done
 
 # Shared skills stay generic: product facts belong in the consumer's AGENTS.md.
 if grep -rIn -i -E '\b(kako|kekkai|mizuchi|hoshi|tenkai|rusui|mikura|aldunis)\b|shikigami GitHub|sekai-chisei (release|change|design)' \
-  --exclude-dir=sekai-ontology skills; then
+  skills; then
   fail "a shared skill names a specific product (see above)"
 fi
 
@@ -54,8 +54,8 @@ if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "sel
 rm "$tmp/.agents/project.md"
 printf 'drift\n' >> "$tmp/.agents/skills/verify-change/SKILL.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: drifted stub was not detected"; fi
-mkdir -p "$tmp/.agents/skills/sekai-ontology" && cp skills/sekai-ontology/SKILL.md "$tmp/.agents/skills/sekai-ontology/"
-cp -r skills/sekai-ontology/. "$tmp/.agents/skills/sekai-ontology/"
+mkdir -p "$tmp/.agents/skills/ui-e2e" && cp skills/ui-e2e/SKILL.md "$tmp/.agents/skills/ui-e2e/"
+cp -r skills/ui-e2e/. "$tmp/.agents/skills/ui-e2e/"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: vendored shared skill was not detected"; fi
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null

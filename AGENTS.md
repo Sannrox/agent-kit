@@ -195,8 +195,8 @@ procedure is `skills/deliver-ready-issue/references/parallel-delivery.md`.
 
 ## Rules
 
-- Shared skills stay generic. Never name a specific product in `skills/`
-  (except the opt-in `sekai-ontology`); put product facts behind a
+- Shared skills stay generic. Never name a specific product in `skills/`;
+  put product facts behind a
   reference to the consumer's `AGENTS.md` (`## Agent skill profile` or an
   existing section) instead.
 - A new `## Agent skill profile` heading, a renamed skill, or a stub template change
