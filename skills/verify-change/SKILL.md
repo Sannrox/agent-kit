@@ -34,7 +34,12 @@ Run the narrowest useful checks first, then expand according to change risk.
    prerequisites are intentionally available. Never print secrets or persist
    live payloads. Complete when skipped checks name both the reason and
    residual risk.
-5. Review failures against the changed scope. Report pre-existing failures with
+5. When the diff adds or changes tests, check each against the `test-audit`
+   authoring gate
+   (`${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/test-audit/SKILL.md`)
+   and report its wall time. A test that fails the gate is removed or moved to
+   its owning boundary, not kept for count.
+6. Review failures against the changed scope. Report pre-existing failures with
    evidence; do not relabel a failure as pre-existing without comparison.
 
 ## Output

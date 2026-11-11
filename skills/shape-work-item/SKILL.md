@@ -38,6 +38,9 @@ explicitly authorizes publishing to GitHub.
    deployment or environment state, image or artifact digests, tenant or
    customer names, release-hold or rollout-hold language, or other private
    environment inventory from any text that will be published to GitHub.
+   Write acceptance evidence as the observable behavior and the one boundary
+   that proves it. Do not list tests: which tests exist is decided at delivery
+   by the `test-audit` authoring gate.
 5. Recommend labels (`type:*`, `area:*`, `status:ready` when ready). Do not
    invent priority, assignment, or sprint.
 6. Milestones are release versions. A milestone is titled with the exact

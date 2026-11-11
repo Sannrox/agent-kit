@@ -121,7 +121,12 @@ mark the Issue unless documented maintainer policy requires it.
 
 ### 4. Verify and review
 
-1. Add focused deterministic tests while implementing.
+1. Add focused deterministic tests while implementing. Every new or changed
+   test passes the `test-audit` authoring gate first: one owner per contract
+   at its strongest boundary, a named regression, and no test-only seam. A
+   fix carries one or two tests that fail before it and pass after. Read
+   `${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/test-audit/SKILL.md`
+   when the repository has no stub for it.
 2. Run `simplify-change` on the complete diff against the merge base: cut it
    to the smallest complete fix and drop tests without a named failure. Read
    `${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/simplify-change/SKILL.md`
