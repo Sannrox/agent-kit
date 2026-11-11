@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/test-audit.
+interface:
+  display_name: "Test Audit"
+  short_description: "Gate new tests and prune ones that prove nothing"
+  default_prompt: "Use $test-audit to gate the tests in this change, or to audit this subsystem's tests."
