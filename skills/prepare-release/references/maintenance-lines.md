@@ -13,8 +13,9 @@ request lands.
 
 ## Branch
 
-Name the line `release-<major>.<minor>` before 1.0 and `release-<major>`
-after. Create it from the last tag of that line when the first fix needs it,
+Name the line `release-<major>.<minor>`, one per minor, before and after
+1.0: `v2.0.3` releases from `release-2.0`, `v2.1.0` from `release-2.1`.
+Create it from the last tag of that line when the first fix needs it,
 never in advance. The hyphen keeps the line apart from the
 `release/<version>` bump branches this skill already uses: a `release-*`
 protection rule or CI trigger does not match them.
