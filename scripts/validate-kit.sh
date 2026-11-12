@@ -37,6 +37,14 @@ for ref in references/parallel-delivery.md scripts/issue-lane.sh; do
   [ -f "skills/deliver-ready-issue/${ref}" ] || fail "missing skills/deliver-ready-issue/${ref}"
   grep -Fq "$ref" skills/deliver-ready-issue/SKILL.md || fail "deliver-ready-issue does not link ${ref}"
 done
+[ -f skills/prepare-release/references/maintenance-lines.md ] || fail "missing skills/prepare-release/references/maintenance-lines.md"
+grep -Fq references/maintenance-lines.md skills/prepare-release/SKILL.md || fail "prepare-release does not link references/maintenance-lines.md"
+grep -Fqx -- '- Release only from a commit on `main` or the matching maintenance line.' skills/prepare-release/SKILL.md \
+  || fail "prepare-release is missing canonical line: - Release only from a commit on \`main\` or the matching maintenance line."
+grep -Fq 'origin/release-<line>' skills/prepare-release/SKILL.md || fail "prepare-release version bump does not name a maintenance-line base"
+grep -Fq 'maintenance line is not latest.' skills/prepare-release/SKILL.md \
+  || fail "prepare-release still treats every final release as latest"
+grep -Fq 'git cherry-pick -x' skills/deliver-ready-issue/SKILL.md || fail "deliver-ready-issue does not name the maintenance-line backport"
 grep -Eq 'issue-lane\.sh"?[[:space:]]+check' skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use issue-lane.sh check"
 
 for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax error in $s"; done
