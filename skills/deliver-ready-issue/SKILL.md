@@ -118,6 +118,9 @@ mark the Issue unless documented maintainer policy requires it.
 3. Implement one coherent outcome. Avoid opportunistic cleanup.
 4. If the Issue cannot produce one reviewable Pull Request, stop and recommend
    a split. Do not create follow-up Issues without authorization.
+5. If the fix must also reach a maintenance line, note that in the bound
+   outcome. The `main` pull request is still this lane; the backport is the
+   follow-up in step 6 after it lands.
 
 ### 4. Verify and review
 
@@ -259,6 +262,14 @@ mark the Issue unless documented maintainer policy requires it.
    commits or an open Pull Request unless told to.
 5. Invoke `advance-issue-frontier` in report-only mode unless the user also
    authorized frontier status updates.
+6. When the landed fix must also reach a maintenance line, follow
+   [prepare-release maintenance lines](../prepare-release/references/maintenance-lines.md).
+   After the `main` pull request lands, open one pull request per supported
+   line, newest to oldest, from a worktree on that line, built with
+   `git cherry-pick -x`. Name the source and destination commits, and any
+   adaptation. A skipped line is explained on the source pull request. This
+   follow-up is not a second lane: do not claim a new branch for the same
+   Issue, and do not run `issue-lane.sh land` against a non-default base.
 
 Landing rules:
 
@@ -288,7 +299,8 @@ Return to the maintainer in the session (not on GitHub):
 - implemented outcome;
 - simplify-change deltas, verification evidence (commands + results),
   autoreview closeout, and validate-behavior results or why it was skipped;
-- merge state and newly available follow-up work when applicable;
+- merge state, any maintenance-line backport pull requests, and newly
+  available follow-up work when applicable;
 - blockers, skipped checks, and remaining uncertainty.
 
 ## Boundaries

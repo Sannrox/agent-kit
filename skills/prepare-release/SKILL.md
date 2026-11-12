@@ -11,6 +11,9 @@ Assemble decision-ready release evidence and, when authorized, carry the
 release through to a verified published version. The repository's release
 procedure (linked from `AGENTS.md`, often `RELEASING.md`) owns the tag
 scheme, the release workflow, and retry rules; this Skill follows it.
+Releases come from `main`, or from the matching maintenance line when a
+pinned older line needs a fix
+([references/maintenance-lines.md](references/maintenance-lines.md)).
 
 ## Establish the authority ceiling
 
@@ -31,11 +34,14 @@ published release.
 
 1. Identify the target version, base tag, target commit, merged PR range, and
    the milestone titled with the target version (milestones are release
-   versions; see `shape-work-item`). Read the version source named in
-   `AGENTS.md`, CI, and open release-blocking Issues. Every open Issue in the
-   version milestone is either closed by this release or moved to a later
-   version milestone by the maintainer; list each one as closed, moved, or
-   blocking. Complete when the exact release contents are bounded.
+   versions; see `shape-work-item`). A patch on a line older than `main`
+   follows [references/maintenance-lines.md](references/maintenance-lines.md):
+   the base is that `release-<line>` branch, not `main`. Read the version
+   source named in `AGENTS.md`, CI, and open release-blocking Issues. Every
+   open Issue in the version milestone is either closed by this release or
+   moved to a later version milestone by the maintainer; list each one as
+   closed, moved, or blocking. Complete when the exact release contents are
+   bounded.
 2. Classify changes as `Added`, `Changed`, `Fixed`, `Security`, or `Migration`.
    Check SemVer fit; before `1.0`, call out all public breaking changes even when
    they fit a minor bump. Complete when every user-visible merged change is
@@ -62,17 +68,22 @@ published release.
 
 ## Publish the version bump
 
+The steps are the same on `main` and on a maintenance line. The base is
+`origin/main`, or `origin/release-<line>` when this release is for that
+line. The worktree, bump branch, and squash-merge target follow the base.
+
 1. Work in a dedicated worktree, `.worktrees/release-<version>` on branch
-   `release/<version>` from `origin/main`. Never switch, reset, or clean the
+   `release/<version>` from that base. Never switch, reset, or clean the
    primary checkout.
 2. Commit the version source, lockfiles, and the new `CHANGELOG.md` version
    section together; nothing else. A pre-release (`-rc.N`, `-beta.N`) gets its
    own section; the final version never reuses pre-release notes.
 3. Publish with the path `AGENTS.md` names (for example
-   `gh-verified-push.sh --create-branch-from origin/main`), otherwise
-   `git push`. Open the Pull Request with the release-note draft and the
-   milestone list in its body, and mark it ready once its checks pass. Return
-   the Pull Request URL. Stop here under Publish.
+   `gh-verified-push.sh --create-branch-from origin/main` or
+   `--create-branch-from origin/release-<line>`), otherwise
+   `git push`. Open the Pull Request against that same base, with the
+   release-note draft and the milestone list in its body, and mark it ready
+   once its checks pass. Return the Pull Request URL. Stop here under Publish.
 
 ## Establish the release
 
@@ -80,8 +91,8 @@ published release.
    `gh pr merge <pr> --squash --delete-branch --match-head-commit <sha>`.
    Never queue GitHub auto-merge. A failed or timed-out merge response may
    still have merged; reconcile the Pull Request state before retrying.
-   Record the merge commit on `main`; it is the release commit. Remove the
-   release worktree.
+   Record the merge commit on `main` or on the matching `release-<line>`
+   branch; it is the release commit. Remove the release worktree.
 2. Hand the maintainer the exact tag command for the release commit, in the
    form the release procedure requires, for example:
 
@@ -107,8 +118,9 @@ published release.
    `gh release view <tag> --json tagName,isDraft,isPrerelease,body,assets`:
    not a draft, pre-release exactly when the version has a pre-release suffix,
    body equal to the `CHANGELOG.md` section, and the artifacts the
-   `### Release audit` requires attached. A final release is the repository's
-   latest release; a pre-release never is.
+   `### Release audit` requires attached. A final release of the current
+   line is the repository's latest release. A final release on a previous
+   maintenance line is not latest. A pre-release never is.
 6. After a final release, close the version milestone when no open Issues
    remain in it. A pre-release leaves the milestone open.
 
@@ -126,5 +138,5 @@ Separate verified facts from recommendations.
 - Never create, sign, push, move, or delete a release tag; the maintainer
   does.
 - Never edit, re-publish, or delete a published release; cut a new version.
-- Release only from a commit on `main`.
+- Release only from a commit on `main` or the matching maintenance line.
 - Change `CHANGELOG.md` only in the version-bump Pull Request.
