@@ -13,27 +13,19 @@ in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
 `scripts/validate-workflow-skills.sh` is the vendored wrapper consumers run;
 `scripts/gh-verified-push.sh` is the canonical publisher for GitHub-signed
 commits; lanes run it from the kit through `issue-lane.sh push`. `scripts/validate-kit.sh` is this repository's skill gate.
-The `fencing-lease` crate lives in `crates/fencing-lease` (workspace root
-`Cargo.toml`, lockstep `[workspace.package] version`). The HA pattern is
-`docs/decisions/0001-standalone-engine-ha.md`. Signed `v*` releases are
-documented in `RELEASING.md`. Read `README.md` before changing the stub
+The kit version lives in `VERSION`. Signed `v*` releases are documented in
+`RELEASING.md`. Read `README.md` before changing the stub
 contract.
 
 ## Build, Test, and Development Commands
 
 - `bash scripts/validate-kit.sh` validates canonical skills and self-tests the
   consumer check. It is the skill gate.
-- Crate gate (from the workspace root, with `CARGO_TARGET_DIR` local to this
-  tree):
-  `cargo fmt --all -- --check`,
-  `cargo test --locked --workspace`,
-  `cargo clippy --locked --workspace --all-targets -- -D warnings`,
-  and the same test/clippy commands with `--features postgres,kubernetes`.
 - `bash scripts/validate-release.sh` checks the release path: a `v*` tag
   only dispatches `release.yml` on `main` (script self-tests, workflow gates,
   dry-run package does not publish).
-- CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, the
-  crate gate, and the release-script gate.
+- CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, and the
+  release-script gate.
 
 GitHub Issues are the planning source of truth. Shared skills stay in
 `skills/`; this repository has no `.agents/skills/` stubs of its own. Never
@@ -177,7 +169,7 @@ Parallel lanes must not collide. Collision surfaces in this repository are
 `skills/`, `templates/`, `scripts/check-consumer.sh`,
 `scripts/validate-kit.sh`, `scripts/validate-workflow-skills.sh`,
 `scripts/gh-verified-push.sh`, the stub/profile contract in `README.md`,
-`crates/`, `Cargo.toml`, `Cargo.lock`, `docs/decisions/`,
+`VERSION`, `docs/decisions/`,
 `.github/workflows/`, `scripts/release-package.sh`,
 `scripts/verify-release-tag.sh`, `scripts/validate-release.sh`, `security/`,
 and `RELEASING.md`.
@@ -240,9 +232,7 @@ Add focused checks in `scripts/validate-kit.sh` for changes touching skill
 frontmatter, required headings, the stub template, vendored scripts, or the
 consumer check. Prefer deterministic fixture renders that do not need GitHub.
 `bash scripts/validate-kit.sh` must stay green offline. Release-path changes
-add `bash scripts/validate-release.sh`. Crate changes add
-focused `cargo test -p fencing-lease` coverage plus the crate gate above.
-PostgreSQL backend tests run only when `FENCING_LEASE_POSTGRES_URL` is set.
+add `bash scripts/validate-release.sh`.
 
 ## Commit & Pull Request Guidelines
 
@@ -311,7 +301,6 @@ Rows beyond `## Testing Guidelines`:
 | --- | --- |
 | skill contract | `bash scripts/validate-kit.sh` |
 | shell scripts | `shellcheck -S warning scripts/*.sh skills/*/scripts/*.sh` |
-| fencing-lease crate | `cargo fmt --all -- --check`; `cargo test --locked --workspace`; `cargo clippy --locked --workspace --all-targets -- -D warnings`; same test/clippy with `--features postgres,kubernetes` |
 | release path | `bash scripts/validate-release.sh` |
 
 ### Release audit
@@ -319,5 +308,5 @@ Rows beyond `## Testing Guidelines`:
 - CHANGELOG Unreleased versus tagged history;
 - stub template and vendored-script contract;
 - consumer re-render PRs for breaking kit changes;
-- signed annotated `v*` tag equals workspace version; GitHub Release notes
+- signed annotated `v*` tag equals `VERSION`; GitHub Release notes
   come from CHANGELOG; family manifest and SBOM; no `latest` image tag.

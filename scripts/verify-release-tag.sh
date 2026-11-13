@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Refuse a v* tag that is lightweight, unsigned, signed by an unknown key,
-# or whose version does not equal the workspace version.
+# or whose version does not equal VERSION.
 #
 # Usage:
 #   bash scripts/verify-release-tag.sh verify <tag> [commit-sha]
@@ -43,8 +43,11 @@ fingerprint_allowed() {
   return 1
 }
 
-workspace_version() {
-  python3 -c 'import re,sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(); m=re.search(r"(?ms)^\[workspace\.package\][^\[]*?^version\s*=\s*\"([^\"]+)\"", text); sys.exit("Cargo.toml has no [workspace.package] version") if not m else print(m.group(1))' "$ROOT_PATH/Cargo.toml"
+release_version() {
+  local v
+  v="$(tr -d '[:space:]' <"$ROOT_PATH/VERSION" 2>/dev/null)" || fail "missing VERSION"
+  [[ -n "$v" ]] || fail "VERSION is empty"
+  printf '%s\n' "$v"
 }
 
 import_allowed_key() {
@@ -76,9 +79,9 @@ verify_release_tag() {
   fingerprint_allowed "$status_fpr" || fingerprint_allowed "$primary_fpr" || fail "tag ${tag} is signed by an unknown key"
 
   local version="${tag#v}" expected
-  expected="$(workspace_version)"
-  [[ "$version" == "$expected" ]] || fail "tag ${tag} does not match workspace version ${expected}"
-  printf 'Release tag %s is annotated, signed, and matches workspace version %s\n' "$tag" "$expected"
+  expected="$(release_version)"
+  [[ "$version" == "$expected" ]] || fail "tag ${tag} does not match VERSION ${expected}"
+  printf 'Release tag %s is annotated, signed, and matches VERSION %s\n' "$tag" "$expected"
 }
 
 expect_failure() {
@@ -91,7 +94,7 @@ expect_failure() {
 }
 
 self_test() {
-  local tmp work gnupg fpr cargo_toml
+  local tmp work gnupg fpr version_file
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-release-tag.XXXXXX")"
   work="${tmp}/work"
   gnupg="${tmp}/gpg"
@@ -115,9 +118,9 @@ self_test() {
   git -C "$work" config tag.gpgSign false
   git -C "$work" config user.signingkey "$fpr"
   git -C "$work" config gpg.program "$(command -v gpg)"
-  cargo_toml="${work}/Cargo.toml"
-  printf '[workspace.package]\nversion = "0.1.0"\n' >"$cargo_toml"
-  git -C "$work" add Cargo.toml
+  version_file="${work}/VERSION"
+  printf '0.1.0\n' >"$version_file"
+  git -C "$work" add VERSION
   git -C "$work" commit -q -m first
   local first
   first="$(git -C "$work" rev-parse HEAD)"
@@ -139,19 +142,19 @@ self_test() {
   printf '%s\n' "$fpr" >"${tmp}/fingerprints"
 
   git -C "$work" tag -s v0.2.0 -m "wrong version" "$first"
-  (cd "$work" && expect_failure "does not match workspace version" v0.2.0 "$first")
+  (cd "$work" && expect_failure "does not match VERSION" v0.2.0 "$first")
   git -C "$work" tag -d v0.2.0 >/dev/null
 
-  # Release candidates: the rc tag equals an rc workspace version, and a
+  # Release candidates: the rc tag equals an rc VERSION, and a
   # final tag never releases an rc version.
-  printf '[workspace.package]\nversion = "0.2.0-rc.1"\n' >"$cargo_toml"
+  printf '0.2.0-rc.1\n' >"$version_file"
   git -C "$work" commit -q -am rc
   local rc
   rc="$(git -C "$work" rev-parse HEAD)"
   git -C "$work" tag -s v0.2.0-rc.1 -m "rc" "$rc"
   (cd "$work" && bash "$SCRIPT_PATH" verify v0.2.0-rc.1 "$rc" >/dev/null)
   git -C "$work" tag -s v0.2.0 -m "final on rc" "$rc"
-  (cd "$work" && expect_failure "does not match workspace version 0.2.0-rc.1" v0.2.0 "$rc")
+  (cd "$work" && expect_failure "does not match VERSION 0.2.0-rc.1" v0.2.0 "$rc")
   git -C "$work" tag -s v0.2.0-beta.x -m "bad suffix" "$rc"
   (cd "$work" && expect_failure "invalid release tag" v0.2.0-beta.x "$rc")
 

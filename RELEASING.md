@@ -11,9 +11,8 @@ Tenkai input, not a consumer pin.
 
 Agents never push `v*` tags. After the version-bump pull request merges, the
 maintainer creates an annotated, signed `vX.Y.Z` tag with the registered
-release-signing key. The tag must equal the workspace version in
-`Cargo.toml` (`[workspace.package] version`). The workflow refuses unsigned
-or lightweight tags.
+release-signing key. The tag must equal the version in `VERSION`. The
+workflow refuses unsigned or lightweight tags.
 
 ## Prepare
 
@@ -21,7 +20,7 @@ or lightweight tags.
 2. Draft the next CHANGELOG section from merged work. Pull requests never
    edit `CHANGELOG.md`; the release step publishes that section as the
    GitHub Release body.
-3. Land the version-bump pull request. Workspace crates move in lockstep.
+3. Land the version-bump pull request, which sets `VERSION`.
 
 An agent runs these steps with `prepare-release` under Release authority,
 then hands the maintainer the tag command and verifies the published release.
@@ -42,14 +41,14 @@ release branches.
 
 Cut `vX.Y.Z-rc.N` (or `vX.Y.Z-beta.N`) before the final tag:
 
-1. Land a version-bump pull request that sets the workspace version to
+1. Land a version-bump pull request that sets `VERSION` to
    `X.Y.Z-rc.N` and adds a `## [X.Y.Z-rc.N]` section to `CHANGELOG.md`.
    The final `vX.Y.Z` needs its own section; it never reuses the rc notes.
 2. Tag `vX.Y.Z-rc.N` on that commit.
 3. The release publishes as a GitHub pre-release and is never marked latest.
 
 A failed release candidate costs only an rc number. A final tag on a commit
-whose workspace version is still `X.Y.Z-rc.N` is refused. The manifest gate
+whose `VERSION` is still `X.Y.Z-rc.N` is refused. The manifest gate
 flags cover pull requests merged since the previous final tag, so a final
 release keeps the gates first seen in its release candidates.
 
@@ -63,9 +62,9 @@ runs **main's** `release.yml`, never the copy at the tagged commit.
 
 - checks out the tag and fetches the annotated tag object
 - verifies the signed tag with main's `scripts/verify-release-tag.sh` and
-  main's allowed keys against the tagged commit's `Cargo.toml`
+  main's allowed keys against the tagged commit's `VERSION`
 - requires the tagged commit to be on `main`
-- runs the release-script gate, the skill gate and the crate tests, packages
+- runs the release-script gate and the skill gate, packages
   the archive, and writes the manifest `git_sha` from that commit
 - writes an SBOM, attests provenance, drafts the GitHub Release with
   `gh release create <tag> --verify-tag` from the matching CHANGELOG section,
