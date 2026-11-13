@@ -274,10 +274,10 @@ mark the Issue unless documented maintainer policy requires it.
    `LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`,
    which removes the owner marker first, then the branch, and refuses another
    lane's claim, a branch with commits, or an open Pull Request unless told
-   to (`--yes`).
-5. Invoke `advance-issue-frontier` in report-only mode unless the user also
-   authorized frontier status updates.
-6. When the landed fix must also reach a maintenance line, follow
+   to (`--yes`). The lane ends here: choosing the next Issue belongs to
+   whoever asks for it (step 1 of "Prove readiness") or to the lead of a
+   parallel run, not to a closing step of this lane.
+5. When the landed fix must also reach a maintenance line, follow
    [prepare-release maintenance lines](../prepare-release/references/maintenance-lines.md).
    After the `main` pull request lands, open one pull request per supported
    line, newest to oldest, from a worktree on that line, built with
