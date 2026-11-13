@@ -101,7 +101,9 @@ exists:
 
 1. an open Pull Request, draft or ready, that references the Issue;
 2. a branch `<type>/<issue>`, or any branch matching `*/<issue>-*`;
-3. the authenticated login assigned to the Issue less than six hours ago.
+3. the authenticated login assigned to the Issue less than six hours ago;
+4. a lane owner marker: an Issue comment, by a login that can push, naming
+   the claiming agent.
 
 An assignment older than six hours with neither branch nor Pull Request is an
 ownership hint, not a veto: report it and ask the maintainer before claiming.
@@ -112,18 +114,31 @@ confirmation, unless the lead of the same parallel run owns the stalled lane.
 
 A lane claims before it implements, under Publish or Land authority or with an
 explicit claim authorization under Implement, using
-`bash skills/deliver-ready-issue/scripts/issue-lane.sh claim <issue>`:
+`LANE_AGENT=<agent> bash skills/deliver-ready-issue/scripts/issue-lane.sh claim <issue>`:
 
 - the branch `<type>/<issue>` is created on GitHub from the default branch by
   an atomic ref creation, so when two machines race exactly one claim
   succeeds and the other sees `claimed`;
 - the authenticated login is assigned to the Issue, which shows the claim in
-  the Issue list and timestamps it in the Issue timeline.
+  the Issue list and timestamps it in the Issue timeline;
+- an Issue comment names the claiming agent (`LANE_AGENT`) and carries the
+  SHA-256 of a random lane token that only the claimant receives.
+
+Several agents may run under one GitHub login, so the login never proves
+ownership. A lane is yours only when your `LANE_TOKEN` matches the hash on the
+Issue (`check` reports `mine`); any other claim belongs to another lane,
+including one made by your own login. `release`, `push`, and `land` act only
+on your own lane unless the maintainer approves `--yes`. The token stays in
+the claimant's session and never reaches GitHub, the repository, or a path
+another agent reads. Claims made by hand or before tokens carry no owner and
+count as another lane's.
 
 `<type>` is derived deterministically so that every machine computes the same
 branch: the Conventional Commit type in the Issue title, with `bug` mapped to
-`fix`; otherwise the type label (`bug` → `fix`, `enhancement` → `feat`,
-`documentation` → `docs`); otherwise `chore`. Lane branches carry no slug
+`fix`; otherwise the type label (`type:bug` or `bug` → `fix`, `type:feature`
+or `enhancement` → `feat`, `type:docs` or `documentation` → `docs`,
+`type:refactor` → `refactor`, `type:research` → `research`); otherwise
+`chore`. Lane branches carry no slug
 because the name is the claim; the Pull Request title carries the description.
 Human topic branches may keep `<type>/<issue>-<slug>` and are detected as
 claims by the same rule, as are legacy `codex/<issue>-<slug>` branches.

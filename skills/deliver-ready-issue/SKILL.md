@@ -53,10 +53,15 @@ force-pushing protected branches, or weakening repository protections.
    ```
 
    It reports open Pull Requests referencing the Issue, claim branches
-   (`<type>/<issue>`, `*/<issue>-*`), assignees with the assignment age, and
-   a verdict; exit code 3 is `claimed`. A claim means another lane owns the
-   Issue: continue only when the user directs the takeover, and preserve the
-   existing branch, Pull Request, and evidence first. An assignment older than
+   (`<type>/<issue>`, `*/<issue>-*`), assignees with the assignment age, the
+   lane owner (agent name), idle hours, and a verdict. Pass
+   `LANE_TOKEN=<token>` when you hold a lane: `mine` (exit 0) means the token
+   matches and you resume. `claimed` (exit 3) means another lane owns the
+   Issue, even when your own GitHub login claimed it, because several agents
+   may share one login. Continue it only when the user directs the takeover,
+   and preserve the existing branch, Pull Request, and evidence first. A
+   claim without a lane owner, or idle for six hours or more, is reported as a
+   hint; it is still not yours. An assignment older than
    six hours without branch or Pull Request is reported as a hint; ask the
    maintainer before claiming. Then inspect this machine with
    `git worktree list --porcelain` and `git branch --list '*/<issue>*'`; a
@@ -76,12 +81,18 @@ ambiguous. Report the smallest action that would unblock delivery.
    authority or an explicit claim authorization:
 
    ```sh
-   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
+   LANE_AGENT=<agent> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
    ```
 
-   The script derives `<type>` from the Issue, creates `<type>/<issue>` on
-   GitHub from the default branch with an atomic ref creation, assigns you, and
-   prints the branch and base SHA. Exit code 3 means another machine claimed
+   `LANE_AGENT` is a short lowercase name for this agent (for example
+   `claude` or `codex`). The script derives `<type>` from the Issue, creates
+   `<type>/<issue>` on GitHub from the default branch with an atomic ref
+   creation, assigns you, comments the lane owner and a hash of a fresh lane
+   token on the Issue, and prints the branch, base SHA, and the token. Keep the
+   token in your own session, never on GitHub, in the repository, or in a path
+   another agent reads, and pass it as `LANE_TOKEN` to `check`, `release`,
+   `push`, and `land`. A lost token makes the lane look foreign: ask the
+   maintainer rather than take it over. Exit code 3 means another machine claimed
    first or the repository has no free lane under the three-lane limit
    (`issue-lane.sh capacity` shows the count): stop and report; do not create
    a differently named branch. Under an
@@ -182,14 +193,16 @@ mark the Issue unless documented maintainer policy requires it.
 2. Publish the claim branch from the lane worktree:
 
    ```sh
-   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" push <issue>
+   LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" push <issue>
    ```
 
    It publishes GitHub-verified commits through the kit's
    `scripts/gh-verified-push.sh` (GraphQL `createCommitOnBranch`) and resets
    the worktree to the published commit, so local `HEAD` is the Pull Request
-   head. It refuses a dirty tree, a branch outside the lane, a branch that was
-   never claimed, and a checkout that does not descend from the published
+   head. It refuses (exit 3) a lane whose owner marker does not match
+   `LANE_TOKEN`, unless the maintainer approved `--yes`. It refuses a dirty
+   tree, a branch outside the lane, a branch that was never claimed, and a
+   checkout that does not descend from the published
    branch. `push` refuses a rebased or merged branch, even one that keeps
    the published tree. Refresh after a publish by rebasing onto `main`, never
    by merging it, then publish with `push <issue> --rebased`: it publishes the
@@ -224,10 +237,11 @@ mark the Issue unless documented maintainer policy requires it.
    CI first; the required checks gate the merge:
 
    ```sh
-   bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" land <issue> --pr <pr>
+   LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" land <issue> --pr <pr>
    ```
 
-   It watches the checks, then squash-merges with local `HEAD` as the merge
+   Like `push`, it refuses (exit 3) a lane that is not yours unless the
+   maintainer approved `--yes`. It watches the checks, then squash-merges with local `HEAD` as the merge
    precondition (pass `--head <sha>` for another reviewed commit), so GitHub
    refuses the merge if the head moved. It succeeds only once the default
    branch contains the merge and the Issue closed, and only then deletes the
@@ -257,9 +271,10 @@ mark the Issue unless documented maintainer policy requires it.
    with `gh pr view <pr> --json state,mergeCommit` before deleting. Leave the
    primary checkout untouched unless the user asks to synchronize it. A lane
    that is abandoned before publishing releases its claim with
-   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`,
-   which refuses to delete a branch with
-   commits or an open Pull Request unless told to.
+   `LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`,
+   which removes the owner marker first, then the branch, and refuses another
+   lane's claim, a branch with commits, or an open Pull Request unless told
+   to (`--yes`).
 5. Invoke `advance-issue-frontier` in report-only mode unless the user also
    authorized frontier status updates.
 6. When the landed fix must also reach a maintenance line, follow
