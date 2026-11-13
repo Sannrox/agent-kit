@@ -51,19 +51,25 @@ Requests. Do not rely on a stale local backlog export.
    login is still another lane's unless that lane's token proves it `mine`. Do not run `git fetch --prune` while another lane
    on this machine is mutating shared Git state; the GitHub reads above do not
    need it.
-2. Parse dependencies only from each Issue's `## GitHub dependencies` section.
-   Resolve referenced Issues in the same repository unless the text explicitly
-   names another repository. This repository has real cross-repository
-   predecessors (see `AGENTS.md` "Dependencies and Ownership"); resolve
-   `Sannrox/<repo>#<n>` references against that repository.
-3. Treat a referenced closed Issue as delivered only when its closure state is
-   consistent with the dependency wording. If it was closed as unplanned or
-   superseded, require evidence that the dependent outcome remains valid.
-4. Treat textual gates such as an active predecessor or external decision as
-   blocking until the Issue explicitly records them as delivered.
-5. Detect missing references, contradictory status, self-dependencies, and
-   cycles. Keep affected Issues blocked and report the anomaly rather than
-   guessing.
+2. Compute the dependency state with
+   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/advance-issue-frontier/scripts/frontier.sh" --json`.
+   It parses dependencies only from each Issue's `## GitHub dependencies`
+   section, resolves `<owner>/<repo>#<n>` references against that repository,
+   and classifies each open Issue as `ready` (every reference closed as
+   completed), `blocked`, `anomalous` (missing reference, self-dependency, or
+   in or behind a same-repository cycle), or `judgment`. A cycle through
+   another repository shows as `blocked`; report it as an anomaly when you
+   see one. Do not re-derive these states by
+   hand; fix the script upstream when it is wrong.
+3. Resolve each `judgment` Issue yourself. The script leaves prose, Pull
+   Request references, and references closed without completion to you:
+   - treat a referenced closed Issue as delivered only when its closure state
+     is consistent with the dependency wording; if it was closed as unplanned
+     or superseded, require evidence that the dependent outcome remains valid;
+   - treat textual gates such as an active predecessor or external decision as
+     blocking until the Issue explicitly records them as delivered.
+4. Keep `anomalous` Issues blocked and report the anomaly and contradictory
+   status rather than guessing.
 
 Never infer a dependency from ordinary prose, issue numbering, milestones, or
 similar subject matter.
@@ -73,7 +79,8 @@ similar subject matter.
 For each open Issue, classify it as:
 
 - **blocked**: at least one dependency is unresolved or ambiguous;
-- **ready**: every dependency is delivered and no claim exists on GitHub;
+- **ready**: every dependency is delivered and no claim exists on GitHub
+  (the `status:ready` label records only the first half; see below);
 - **active**: a claim exists on GitHub. In precedence order: an open Pull
   Request, draft or ready, that references the Issue; a branch
   `<type>/<issue>` or `*/<issue>-*`; or an assignment less than six hours old;
@@ -104,10 +111,16 @@ parallel, and report the collision for maintainer judgment.
 
 ## Apply authorized status changes
 
-When mutation is authorized:
+`status:ready` means dependencies met; `status:blocked` means a dependency is
+open or anomalous. Claims change between runs and are always checked live with
+`issue-lane.sh`, never encoded in labels. `frontier.sh --apply` relabels only
+Issues that already carry one of those labels and are not in `status:triage`.
 
-1. Prefer one existing repository status label such as `status:ready` or
-   `status:blocked`. Do not create a new label taxonomy implicitly.
+When mutation is authorized in a session:
+
+1. Run `frontier.sh --apply` for the machine-evaluable Issues. Prefer the
+   existing `status:ready` and `status:blocked` labels for the `judgment`
+   Issues you resolved. Do not create a new label taxonomy implicitly.
 2. If status labels are unavailable and the repository workflow permits the
    fallback, update exactly one `Workflow status:` line in the Issue body while
    preserving all other content.

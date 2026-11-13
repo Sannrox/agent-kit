@@ -46,8 +46,9 @@ fencing-lease = { git = "https://github.com/Sannrox/agent-kit", package = "fenci
 ## The stub pattern
 
 This follows the [OpenClaw agent-skills](https://github.com/openclaw/agent-skills)
-"repository entrypoint" pattern. Cursor, Claude Code and Codex discover skills
-from the repository itself (`.agents/skills/<name>/SKILL.md`), so each consuming
+"repository entrypoint" pattern. Cursor and Codex discover skills from the
+repository itself (`.agents/skills/<name>/SKILL.md`); Claude Code reads only
+`.claude/skills`, so that path is a symlink to `../.agents/skills`. Each consuming
 repository keeps a short **stub** with the same name and the full description
 (so the agent still selects it), whose body:
 
@@ -67,6 +68,7 @@ Stubs are generated from `templates/stub-SKILL.md`; never edit them by hand.
 ```text
 AGENTS.md                      # repo policy; links Sannrox/agent-kit; ## Agent skill profile
 CLAUDE.md                      # points to AGENTS.md
+.claude/skills -> ../.agents/skills # symlink so Claude Code finds the stubs
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
 scripts/validate-workflow-skills.sh # vendored byte-for-byte (checked)
