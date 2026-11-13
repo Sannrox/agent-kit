@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from pathlib import Path
 
 COMPONENT = "agent-kit"
@@ -30,6 +31,9 @@ def bom(version: str) -> dict:
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
+        # actions/attest-sbom only recognizes CycloneDX with a serialNumber.
+        # Derived from the root purl so a re-run for the same version is stable.
+        "serialNumber": f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, root_purl)}",
         "version": 1,
         "metadata": {
             "component": {
@@ -48,6 +52,8 @@ def bom(version: str) -> dict:
 def self_test() -> None:
     doc = bom("0.1.0")
     assert doc["bomFormat"] == "CycloneDX"
+    # The fields actions/attest-sbom requires to accept a CycloneDX document.
+    assert doc["specVersion"] and doc["serialNumber"].startswith("urn:uuid:"), doc
     component = doc["metadata"]["component"]
     assert component["name"] == "agent-kit"
     assert component["version"] == "0.1.0"
