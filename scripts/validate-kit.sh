@@ -41,6 +41,8 @@ done
 grep -Fq references/maintenance-lines.md skills/prepare-release/SKILL.md || fail "prepare-release does not link references/maintenance-lines.md"
 grep -Fqx -- '- Release only from a commit on `main` or the matching maintenance line.' skills/prepare-release/SKILL.md \
   || fail "prepare-release is missing canonical line: - Release only from a commit on \`main\` or the matching maintenance line."
+grep -Fqx -- '- Never cut the newest release from a maintenance line.' skills/prepare-release/SKILL.md \
+  || fail "prepare-release is missing canonical line: - Never cut the newest release from a maintenance line."
 grep -Fq 'origin/release-<line>' skills/prepare-release/SKILL.md || fail "prepare-release version bump does not name a maintenance-line base"
 grep -Fq 'maintenance line is not latest.' skills/prepare-release/SKILL.md \
   || fail "prepare-release still treats every final release as latest"

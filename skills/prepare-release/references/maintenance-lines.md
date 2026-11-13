@@ -7,6 +7,12 @@ fix on a line older than `main`. That covers a library consumed by tag, and
 a server or product others deploy by version. A server only its owner
 deploys, continuously, fixes forward on `main` and gets no maintenance line.
 
+The newest release always comes from `main`. A line is older only when a
+final release of a newer minor exists. While `main` holds the newest line,
+even with breaking changes since its last tag, a fix ships as the next
+version from `main` (`-rc.N` first), not as a patch on a `release-*`
+branch. A pre-1.0 minor may break; the release notes call it out.
+
 This is not a second trunk and not a separate skill. `prepare-release`
 follows it; `deliver-ready-issue` names the backport after the `main` pull
 request lands.
@@ -16,7 +22,7 @@ request lands.
 Name the line `release-<major>.<minor>`, one per minor, before and after
 1.0: `v2.0.3` releases from `release-2.0`, `v2.1.0` from `release-2.1`.
 Create it from the last tag of that line when the first fix needs it,
-never in advance. The hyphen keeps the line apart from the
+and only after a newer minor has a final release. Never in advance. The hyphen keeps the line apart from the
 `release/<version>` bump branches this skill already uses: a `release-*`
 protection rule or CI trigger does not match them.
 
@@ -70,6 +76,8 @@ instead of `main`.
 
 - CI runs on pushes to `release-*`.
 - Release workflows accept a tag reachable from `main` or from the
-  `release-*` branch that matches the tag's version.
+  `release-*` branch that matches the tag's version. A tag reachable only
+  from its `release-X.Y` branch is refused unless a final tag of a newer
+  minor (`vA.B.C`, `A.B` > `X.Y`) exists.
 - A GitHub Release on a previous line is never marked latest.
 - `release-*` gets the same protection as `main`.
