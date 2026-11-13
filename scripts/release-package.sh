@@ -37,13 +37,16 @@ done
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 
-workspace_version() {
-  python3 -c 'import re,sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(); m=re.search(r"(?ms)^\[workspace\.package\][^\[]*?^version\s*=\s*\"([^\"]+)\"", text); sys.exit("Cargo.toml has no [workspace.package] version") if not m else print(m.group(1))' "$ROOT_PATH/Cargo.toml"
+release_version() {
+  local v
+  v="$(tr -d '[:space:]' <"$ROOT_PATH/VERSION" 2>/dev/null)" || fail "missing VERSION"
+  [[ -n "$v" ]] || fail "VERSION is empty"
+  printf '%s\n' "$v"
 }
 
-VERSION="$(workspace_version)"
+VERSION="$(release_version)"
 if [[ -n "$TAG" ]]; then
-  [[ "${TAG#v}" == "$VERSION" ]] || fail "tag ${TAG} does not match workspace version ${VERSION}"
+  [[ "${TAG#v}" == "$VERSION" ]] || fail "tag ${TAG} does not match VERSION ${VERSION}"
   python3 "$ROOT_PATH/scripts/changelog-notes.py" "$VERSION" >"${OUT}/RELEASE_NOTES.md"
 fi
 if [[ -z "$GIT_SHA" ]]; then
@@ -53,15 +56,12 @@ fi
 
 if [[ "$SKIP_TEST" -eq 0 ]]; then
   bash scripts/validate-kit.sh
-  cargo test --locked --workspace
 fi
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  cargo build --locked --workspace --all-targets --release
   tar -C "$ROOT_PATH" -czf "${OUT}/agent-kit-${VERSION}.tar.gz" \
-    AGENTS.md CHANGELOG.md LICENSE README.md RELEASING.md \
-    Cargo.lock Cargo.toml rust-toolchain.toml \
-    crates skills templates scripts security
+    AGENTS.md CHANGELOG.md LICENSE README.md RELEASING.md VERSION \
+    skills templates scripts security
 fi
 
 python3 "$ROOT_PATH/scripts/release-sbom.py" "${OUT}/agent-kit.cdx.json"

@@ -19,7 +19,7 @@ on:
       - "security/release-tag-fingerprints"
       - "RELEASING.md"
       - "CHANGELOG.md"
-      - "Cargo.toml"
+      - "VERSION"
   workflow_dispatch:
     inputs:
       tag:
@@ -36,9 +36,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   scripts:
     name: Release scripts
@@ -54,14 +51,11 @@ jobs:
         env:
           SHA: ${{ needs.verify-tag.outputs.sha }}
         run: test "$(git rev-parse HEAD)" = "$SHA"
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.97.1
       - run: bash scripts/validate-release.sh
 
   # Resolves the release commit every later job checks out. A tagged run must
   # come from main: main's verify-release-tag.sh and allowed keys verify the
-  # signed tag against the tagged commit's Cargo.toml, and that commit must be
+  # signed tag against the tagged commit's VERSION, and that commit must be
   # on main. A dry run resolves the checked-out commit and verifies nothing.
   verify-tag:
     name: Verify signed tag
@@ -157,10 +151,6 @@ jobs:
         env:
           SHA: ${{ needs.verify-tag.outputs.sha }}
         run: test "$(git rev-parse HEAD)" = "$SHA"
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Package
         env:
           GH_TOKEN: ${{ github.token }}
