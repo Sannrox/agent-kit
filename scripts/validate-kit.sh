@@ -55,7 +55,7 @@ bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity --self-test >/dev
 # Self-test: render a fixture consumer from the templates and check it.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/.agents" "$tmp/scripts"
-{ printf '# Agents\n\nShared skills: Sannrox/agent-kit.\n\n## Parallel delivery lanes\n\nissue-lane.sh claim\n\n'; cat templates/agent-skill-profile.md; } > "$tmp/AGENTS.md"
+{ printf '# Agents\n\nShared skills: Sannrox/agent-kit.\n\n## Parallel delivery lanes\n\nLANE_AGENT=<agent> bash "$KIT/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>\n\n'; cat templates/agent-skill-profile.md; } > "$tmp/AGENTS.md"
 printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"; printf '/.worktrees/\n' > "$tmp/.gitignore"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
@@ -93,8 +93,9 @@ printf '%s\n' "$out" | grep -q '^Warning: new-exec.sh is 100755' || fail "self-t
 printf '%s\n' "$out" | grep -q '^Warning: plain.sh is 100755' || fail "self-test: no warning for plain.sh made 100755: $out"
 if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test: modified old-exec.sh keeps 100755 and needs no warning: $out"; fi
 
-# Self-test: issue-lane.sh land against a fake gh. Each `gh pr view` serves the
+# Self-test: issue-lane.sh against a fake gh. Each `gh pr view` serves the
 # next Pull Request snapshot (the last one repeats); mutations are recorded.
+# Issue #7 has the claim branch feat/7 and one owner marker (comments).
 land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$push" "$land"' EXIT
 mkdir -p "$land/bin"
 cat > "$land/bin/gh" <<'FAKE'
@@ -104,7 +105,13 @@ case "$*" in
   "repo view --json defaultBranchRef"*) echo main ;;
   "api user"*) echo me ;;
   "issue view 7 --json state"*) cat "$FAKE/issue_state" ;;
-  "issue view 7 --json"*) echo '{"number":7,"title":"feat: x","state":"OPEN","labels":[],"assignees":[],"closedByPullRequestsReferences":[]}' ;;
+  "issue view 7 --json"*) cat "$FAKE/issue_json" ;;
+  "api repos/o/r/issues/7/timeline"*) echo '[]' ;;
+  "api repos/o/r/issues/7/comments"*) cat "$FAKE/comments" ;;
+  "api repos/o/r/collaborators/"*) echo true ;;
+  "api repos/o/r/git/matching-refs/heads/"*) echo '[{"ref":"refs/heads/feat/7","object":{"sha":"x"}}]' ;;
+  "pr list"*) echo '[]' ;;
+  "api repos/o/r/commits/feat/7 --jq .commit.committer.date") echo 2026-01-01T00:00:00Z ;;
   "api graphql"*) case "$*" in *--input*) cat >> "$FAKE/graphql_in" ;; esac; head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
   "pr merge"* | "api -X DELETE"* | "api -X PUT"* | "api -X POST"*) echo "$*" >> "$FAKE/calls" ;;
   "api repos/o/r --jq .node_id") echo R_1 ;;
@@ -143,13 +150,43 @@ snap() { # state head auto(true|false) checks merge-state
 pending='[{"name":"ci","status":"IN_PROGRESS","conclusion":"","isRequired":true}]'
 red='[{"name":"ci","status":"COMPLETED","conclusion":"FAILURE","isRequired":true}]'
 optional_red='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS","isRequired":true},{"name":"fuzz","status":"COMPLETED","conclusion":"FAILURE","isRequired":false}]'
-lane() { # expected-exit dir args...
+lane_agent=a lane_token=lane-token-7
+lane() { # expected-exit dir args...; LANE_AGENT and LANE_TOKEN from lane_agent and lane_token
   local code=0 want="$1" dir="$2"; shift 2
   out="$(cd "$dir" && FAKE="$land" ISSUE_LANE_POLL_SECONDS=0 PATH="$land/bin:$PATH" \
+    LANE_AGENT="$lane_agent" LANE_TOKEN="$lane_token" \
     bash "$ROOT/skills/deliver-ready-issue/scripts/issue-lane.sh" "$@" 2>&1)" || code=$?
   [ "$code" = "$want" ] || fail "self-test: issue-lane $* exited $code, expected $want: $out"
 }
 run_land() { lane "$1" "$land" land 7 --pr 9 --head "$H" "${@:2}"; }
+issue_fixture='{"number":7,"title":"feat: x","state":"OPEN","labels":[],"assignees":[],"closedByPullRequestsReferences":[]}'
+printf '%s\n' "$issue_fixture" > "$land/issue_json"
+# The marker holds the sha256 prefix of lane-token-7; only that token owns the lane.
+printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","user":{"login":"me"},"body":"%s"}]\n' \
+  '<!-- issue-lane-claim agent=a token-sha256=a5d72c097890699d -->' > "$land/comments"
+: > "$land/calls"
+
+# Self-test: lane ownership follows the token, not the shared login.
+lane_agent="" lane 1 "$land" claim 7
+printf '%s\n' "$out" | grep -q LANE_AGENT || fail "self-test: claim without LANE_AGENT did not name it: $out"
+lane 0 "$land" check 7 --json
+printf '%s' "$out" | jq -e '.verdict == "mine" and .mine and .owner.agent == "a"' >/dev/null \
+  || fail "self-test: check with the claim token is not mine: $out"
+lane_token=wrong lane 3 "$land" check 7 --json
+printf '%s' "$out" | jq -e '.verdict == "claimed" and (.mine | not)' >/dev/null \
+  || fail "self-test: check with a wrong token is not claimed: $out"
+lane_token="" lane 3 "$land" check 7
+lane_token="" lane 1 "$land" release 7
+if grep -q DELETE "$land/calls"; then fail "self-test: release without the token deleted something"; fi
+lane_token=wrong lane 3 "$land" push 7
+lane_token=wrong lane 3 "$land" land 7 --pr 9 --head "$H"
+[ ! -s "$land/calls" ] || fail "self-test: push or land acted on a lane that is not mine: $(cat "$land/calls")"
+# Prefixed type labels derive the lane branch when the title has no type.
+jq -c '.title = "x" | .labels = [{name: "type:refactor"}]' <<< "$issue_fixture" > "$land/issue_json"
+lane 0 "$land" check 7 --json
+printf '%s' "$out" | jq -e '.lane_branch == "refactor/7"' >/dev/null || fail "self-test: type:refactor did not derive refactor/7: $out"
+printf '%s\n' "$issue_fixture" > "$land/issue_json"
+
 : > "$land/calls"; echo CLOSED > "$land/issue_state"; echo "$H" > "$land/branch_sha"; echo git@github.com:o/r.git > "$land/origin"
 { snap OPEN "$H" true "$pending" BLOCKED; snap OPEN "$H" false "$pending" BLOCKED; snap OPEN "$H" false '[]' CLEAN
   snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
@@ -228,7 +265,7 @@ lane 0 "$land/repo" push 7
 rg update-index --chmod=+x f && rg commit -qm exec
 rg commit-tree "$(rg rev-parse 'HEAD^{tree}')" -p "$(rg rev-parse HEAD^)" -m published > "$land/branch_sha"
 rg update-index --chmod=-x f && rg commit -qm "drop exec"
-if (cd "$land/repo" && FAKE="$land" PATH="$land/bin:$PATH" \
+if (cd "$land/repo" && FAKE="$land" PATH="$land/bin:$PATH" LANE_TOKEN="$lane_token" \
   bash "$ROOT/skills/deliver-ready-issue/scripts/issue-lane.sh" push 7 >/dev/null 2>&1); then
   fail "self-test: push treated a committed mode change as already published"
 fi

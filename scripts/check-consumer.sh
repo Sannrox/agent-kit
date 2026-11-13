@@ -74,7 +74,7 @@ done < <(grep '^### ' "${kit}/templates/agent-skill-profile.md")
 
 grep -Fq "Sannrox/agent-kit" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not reference Sannrox/agent-kit"
 grep -Fqx "## Parallel delivery lanes" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Parallel delivery lanes"
-grep -Fq "issue-lane.sh claim" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not name issue-lane.sh claim"
+grep -Eq 'issue-lane\.sh"?[[:space:]]+claim' "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not name issue-lane.sh claim"
 grep -Fq "AGENTS.md" "${root}/CLAUDE.md" 2>/dev/null || fail "CLAUDE.md does not point to AGENTS.md"
 grep -Fq "/.worktrees/" "${root}/.gitignore" 2>/dev/null || fail ".gitignore does not ignore /.worktrees/"
 

@@ -45,8 +45,10 @@ Requests. Do not rely on a stale local backlog export.
    `codex/<issue>-<slug>`) to its Issue number. For a candidate whose state
    matters, run
    `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>`;
-   it resolves linked Pull Requests, claim branches, and the assignment age
-   from the Issue timeline. Do not run `git fetch --prune` while another lane
+   it resolves linked Pull Requests, claim branches, the assignment age from
+   the Issue timeline, and the lane owner (agent name) with its idle hours.
+   Report the owner with each active Issue; a claim made by the same GitHub
+   login is still another lane's unless that lane's token proves it `mine`. Do not run `git fetch --prune` while another lane
    on this machine is mutating shared Git state; the GitHub reads above do not
    need it.
 2. Parse dependencies only from each Issue's `## GitHub dependencies` section.

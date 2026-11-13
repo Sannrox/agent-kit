@@ -7,9 +7,17 @@
 #      atomic ref creation (POST /git/refs fails when the ref exists, so the
 #      first claimant wins and every other claimant sees "claimed");
 #   2. the authenticated login assigned to the Issue, visible in the Issue
-#      list and timestamped by the Issue timeline.
+#      list and timestamped by the Issue timeline;
+#   3. an Issue comment naming the claiming agent ($LANE_AGENT) and the
+#      SHA-256 of a random lane token. Only the claimant receives the token.
 # Open Pull Requests that reference the Issue and any branch matching
 # */<issue> or */<issue>-* count as claims too.
+#
+# Several agents may share one GitHub login, so the login never proves
+# ownership. A claim is yours ("mine") only when $LANE_TOKEN hashes to the
+# token on the Issue; everything else is another lane's claim. release, push,
+# and land act only on your own lane unless --yes records the maintainer's
+# approval.
 #
 # capacity counts live lanes repository-wide against the lane limit
 # (ISSUE_LANE_LIMIT, default 3): open Pull Requests from claim branches plus
@@ -47,14 +55,16 @@
 #   bash issue-lane.sh capacity [--json]
 #   bash issue-lane.sh capacity --self-test
 #   bash issue-lane.sh check <issue> [--json]
-#   bash issue-lane.sh claim <issue> [--dry-run]
+#   LANE_AGENT=<name> bash issue-lane.sh claim <issue> [--dry-run]
 #   bash issue-lane.sh release <issue> [--yes]
-#   bash issue-lane.sh push <issue> [--rebased]
+#   bash issue-lane.sh push <issue> [--rebased] [--yes]
 #   bash issue-lane.sh land <issue> --pr <number> [--head <sha>] [--timeout-min <n>]
-#       [--accept-failed <check>]...
+#       [--accept-failed <check>]... [--yes]
+# Pass LANE_TOKEN=<token printed by claim> to check, release, push, and land.
 #
-# Exit codes: 0 unclaimed, done, capacity left, or merged and confirmed; 3
-# claimed by another lane or no lane capacity left; 4 head moved (review and
+# Exit codes: 0 unclaimed, mine, done, capacity left, or merged and confirmed;
+# 3 claimed by another lane, not your lane (push, land), or no lane capacity
+# left; 4 head moved (review and
 # land the new head); 5 merge blocked (failed check, conflict, or behind main);
 # 6 not mergeable yet when the watch timed out (land again to keep watching);
 # 7 merged but a postcondition is unconfirmed (land again to recheck); 1 error.
@@ -134,8 +144,8 @@ done
 
 case "$command_name" in
   push | land)
-    [ "$json_output" = false ] && [ "$dry_run" = false ] && [ "$confirm" = false ] \
-      || fail "${command_name} does not take --json, --dry-run, or --yes"
+    [ "$json_output" = false ] && [ "$dry_run" = false ] \
+      || fail "${command_name} does not take --json or --dry-run"
     ;;
   capacity)
     [ "$dry_run" = false ] && [ "$confirm" = false ] || fail "capacity does not take --dry-run or --yes"
@@ -146,6 +156,10 @@ esac
 [ "$command_name" = capacity ] || [ "$self_test" = false ] || fail "--self-test belongs to capacity"
 [ "$command_name" = push ] || [ "$rebased" = false ] || fail "--rebased belongs to push"
 printf '%s' "$LANE_LIMIT" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_LIMIT must be a positive whole number"
+lane_agent="${LANE_AGENT:-}"
+lane_token="${LANE_TOKEN:-}"
+[ "$command_name" != claim ] || printf '%s' "$lane_agent" | grep -Eq '^[a-z0-9][a-z0-9-]{0,31}$' \
+  || fail "set LANE_AGENT to a short lowercase agent name (for example claude or codex)"
 
 # Claim branches are <type>/<issue> or <type>/<issue>-<slug>.
 CLAIM_BRANCH_RE='^[^/]+/[0-9]+(-[^/]*)?$'
@@ -252,13 +266,18 @@ fi
 
 login="$(gh api user --jq .login)"
 
-issue_json="$(gh issue view "$issue" --json number,title,state,labels,assignees,closedByPullRequestsReferences)"
+fetch_issue() {
+  gh issue view "$issue" --json number,title,state,labels,assignees,closedByPullRequestsReferences
+}
+issue_json="$(fetch_issue)"
 issue_state="$(printf '%s' "$issue_json" | jq -r .state)"
 issue_title="$(printf '%s' "$issue_json" | jq -r .title)"
 
 # Derive the lane type deterministically so every machine computes the same
 # branch: Conventional Commit type in the title (bug -> fix), then the type
-# label, then chore.
+# label (type:bug or bug -> fix, type:feature or enhancement -> feat, type:docs
+# or documentation -> docs, type:refactor -> refactor, type:research ->
+# research, in that order), then chore.
 lane_type() {
   local from_title
   from_title="$(printf '%s' "$issue_title" | sed -nE 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/p')"
@@ -267,17 +286,79 @@ lane_type() {
     "") ;;
     *) printf '%s' "$from_title" ; return ;;
   esac
-  if printf '%s' "$issue_json" | jq -e '.labels[] | select(.name == "bug")' >/dev/null; then
-    printf 'fix'
-  elif printf '%s' "$issue_json" | jq -e '.labels[] | select(.name == "enhancement")' >/dev/null; then
-    printf 'feat'
-  elif printf '%s' "$issue_json" | jq -e '.labels[] | select(.name == "documentation")' >/dev/null; then
-    printf 'docs'
-  else
-    printf 'chore'
-  fi
+  printf '%s' "$issue_json" | jq -j '[.labels[].name] as $labels
+    | first([["type:bug", "bug"], "fix"], [["type:feature", "enhancement"], "feat"],
+        [["type:docs", "documentation"], "docs"], [["type:refactor"], "refactor"], [["type:research"], "research"]
+        | select(any(.[0][]; IN($labels[]))) | .[1]) // "chore"'
 }
 lane_branch="$(lane_type)/${issue}"
+
+sha256_short() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -c1-16
+}
+
+# Hours since an ISO-8601 UTC timestamp.
+hours_since() {
+  local then_epoch
+  then_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || date -u -d "$1" +%s)"
+  printf '%s' $(( ($(date -u +%s) - then_epoch) / 3600 ))
+}
+
+# The oldest claim marker comment: {id, created_at, agent, token_hash, count} or null.
+# A live claim has exactly one marker (claim posts it, release removes it), so
+# the oldest one wins and a later comment cannot replace the owner. Markers
+# count only when their author can push (claimants create the branch) and
+# when they postdate the last reopen (a landed lane leaves its marker behind;
+# a lane whose Issue was reopened needs the maintainer to release or re-claim).
+# Called as `x="$(claim_marker_json)" || ...`, where errexit is off: every
+# fetch returns explicitly so an API failure never reads as "no owner".
+claim_marker_json() {
+  local reopened markers author can_push
+  reopened="$(gh api "repos/${repo}/issues/${issue}/timeline" --paginate \
+    | jq -rs '[.[] | .[]? // empty] | map(select(.event == "reopened")) | sort_by(.created_at) | last | .created_at // ""')" || return 1
+  markers="$(gh api "repos/${repo}/issues/${issue}/comments" --paginate \
+    | jq -sc --arg after "$reopened" '[.[][] | select((.body | test("<!-- issue-lane-claim ")) and .created_at > $after)]')" || return 1
+  for author in $(printf '%s' "$markers" | jq -r '[.[].user.login] | unique | .[]'); do
+    can_push="$(gh api "repos/${repo}/collaborators/${author}/permission" --jq .user.permissions.push)" || return 1
+    if [ "$can_push" != true ]; then
+      markers="$(printf '%s' "$markers" | jq -c --arg a "$author" 'map(select(.user.login != $a))')"
+    fi
+  done
+  printf '%s' "$markers" \
+    | jq -c '[.[] | {id, created_at,
+           agent: (.body | capture("agent=(?<v>[a-z0-9-]+)").v),
+           token_hash: (.body | capture("token-sha256=(?<v>[0-9a-f]+)").v)}]
+        | if length == 0 then null else (sort_by(.created_at, .id) | first) + {count: length} end'
+}
+
+# True when $LANE_TOKEN hashes to the token of owner marker $1.
+token_matches() {
+  [ -n "$lane_token" ] && printf '%s' "$1" \
+    | jq -e --arg h "$(printf '%s' "$lane_token" | sha256_short)" '.token_hash == $h' >/dev/null
+}
+
+# push and land act as the lane's owner: refuse (exit 3) unless LANE_TOKEN
+# matches the owner marker, or --yes records the maintainer's approval.
+require_mine() {
+  local marker
+  [ "$confirm" = false ] || return 0
+  marker="$(claim_marker_json)" || fail "could not read the lane owner of #${issue}; refusing to ${command_name}"
+  token_matches "$marker" && return 0
+  printf 'issue-lane: #%s is not your lane (owner: %s); pass LANE_TOKEN from your claim, or --yes with the maintainer'"'"'s approval\n' \
+    "$issue" "$(printf '%s' "$marker" | jq -r '.agent // "unknown"')" >&2
+  exit 3
+}
+
+# Hours since the claim branch last moved, or since the claim marker, whichever is newer.
+idle_hours() {
+  local marker="$1" newest="" branch_at
+  newest="$(printf '%s' "$marker" | jq -r '.created_at // empty')"
+  if branch_at="$(gh api "repos/${repo}/commits/${lane_branch}" --jq .commit.committer.date 2>/dev/null)" \
+    && [ -n "$branch_at" ] && { [ -z "$newest" ] || [[ "$branch_at" > "$newest" ]]; }; then
+    newest="$branch_at"
+  fi
+  if [ -n "$newest" ]; then hours_since "$newest"; else printf 'null'; fi
+}
 
 # Every branch named <anything>/<issue> or <anything>/<issue>-<slug>.
 claim_branches_json() {
@@ -306,30 +387,32 @@ open_prs_json() {
 
 # Assignees plus the age of the latest assignment event in hours.
 assignment_json() {
-  local last_assigned now_epoch then_epoch age_hours
+  local last_assigned age_hours
   last_assigned="$(gh api "repos/${repo}/issues/${issue}/timeline" --paginate \
     | jq -rs '[.[] | .[]? // empty] | map(select(.event == "assigned")) | sort_by(.created_at) | last | .created_at // empty')"
   age_hours=null
   if [ -n "$last_assigned" ]; then
-    now_epoch="$(date -u +%s)"
-    then_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$last_assigned" +%s 2>/dev/null \
-      || date -u -d "$last_assigned" +%s)"
-    age_hours=$(( (now_epoch - then_epoch) / 3600 ))
+    age_hours="$(hours_since "$last_assigned")"
   fi
   printf '%s' "$issue_json" | jq -c --arg at "${last_assigned:-}" --argjson age "$age_hours" \
     '{assignees: [.assignees[].login], last_assigned_at: (if $at == "" then null else $at end), age_hours: $age}'
 }
 
 report_json() {
-  local branches prs assignment verdict hint
+  local branches prs assignment marker owner mine idle verdict hint
   branches="$(claim_branches_json)"
   prs="$(open_prs_json "$branches")"
   assignment="$(assignment_json)"
+  marker="$(claim_marker_json)" || fail "could not read the lane owner of #${issue}; refusing to judge the claim"
+  mine=false
+  if token_matches "$marker"; then mine=true; fi
   verdict=unclaimed
   hint=""
   if [ "$issue_state" != "OPEN" ]; then
     verdict=closed
-  elif [ "$(printf '%s' "$prs" | jq length)" -gt 0 ] || [ "$(printf '%s' "$branches" | jq length)" -gt 0 ]; then
+  elif [ "$(printf '%s' "$prs" | jq length)" -gt 0 ] || [ "$(printf '%s' "$branches" | jq length)" -gt 0 ] \
+    || [ "$marker" != null ]; then
+    # An owner marker without a branch is an unfinished release: still a claim.
     verdict=claimed
   elif [ "$(printf '%s' "$assignment" | jq '.assignees | length')" -gt 0 ]; then
     if [ "$(printf '%s' "$assignment" | jq '.age_hours // 0')" -lt "$STALE_HOURS" ]; then
@@ -338,12 +421,30 @@ report_json() {
       hint="assignment older than ${STALE_HOURS}h without a branch or Pull Request; ask the maintainer before claiming"
     fi
   fi
+  idle=null
+  if [ "$verdict" = claimed ]; then
+    if [ "$mine" = true ]; then
+      verdict=mine
+    else
+      idle="$(idle_hours "$marker")"
+      if [ "$(printf '%s' "$marker" | jq '.count // 0')" -gt 1 ]; then
+        hint="several lane owner markers on the Issue; the oldest counts; ask the maintainer to clean up"
+      elif [ "$marker" = null ]; then
+        hint="claim carries no lane token (made by hand or before tokens); the same login does not make it yours; ask the maintainer before taking over"
+      elif [ "$idle" != null ] && [ "$idle" -ge "$STALE_HOURS" ]; then
+        hint="no activity for ${idle}h; possibly stale; ask the maintainer before taking over"
+      fi
+    fi
+  fi
+  owner="$(printf '%s' "$marker" | jq -c 'if . == null then null else {agent, claimed_at: .created_at, marker_id: .id} end')"
   jq -n \
     --arg repo "$repo" --argjson issue "$issue" --arg title "$issue_title" --arg state "$issue_state" \
     --arg lane_branch "$lane_branch" --argjson branches "$branches" --argjson prs "$prs" \
-    --argjson assignment "$assignment" --arg verdict "$verdict" --arg hint "$hint" \
+    --argjson assignment "$assignment" --argjson owner "$owner" --argjson idle "$idle" --argjson mine "$mine" \
+    --arg verdict "$verdict" --arg hint "$hint" \
     '{repo: $repo, issue: $issue, title: $title, state: $state, lane_branch: $lane_branch,
       claim_branches: $branches, open_prs: $prs, assignment: $assignment,
+      owner: $owner, mine: $mine, idle_hours: $idle,
       verdict: $verdict, hint: (if $hint == "" then null else $hint end)}'
 }
 
@@ -359,12 +460,13 @@ print_report() {
     "claim branches: \(if (.claim_branches | length) == 0 then "none" else (.claim_branches | join(", ")) end)",
     "open PRs: \(if (.open_prs | length) == 0 then "none" else ([.open_prs[] | "#\(.number) \(if .isDraft then "draft" else "ready" end) \(.headRefName) by \(.author.login) updated \(.updatedAt)"] | join("; ")) end)",
     "assignees: \(if (.assignment.assignees | length) == 0 then "none" else (.assignment.assignees | join(", ")) + " (assigned \(.assignment.last_assigned_at // "unknown"), \(.assignment.age_hours // "?")h ago)" end)",
+    "lane owner: \(if .owner then "\(.owner.agent) (claimed \(.owner.claimed_at))" else "unknown" end)\(if .idle_hours != null then ", idle \(.idle_hours)h" else "" end)",
     "verdict: \(.verdict)\(if .hint then " — " + .hint else "" end)"'
 }
 
 verdict_exit() {
   case "$(printf '%s' "$1" | jq -r .verdict)" in
-    unclaimed) return 0 ;;
+    unclaimed | mine) return 0 ;;
     claimed) return 3 ;;
     *) return 1 ;;
   esac
@@ -546,11 +648,19 @@ case "$command_name" in
 
   claim)
     report="$(report_json)"
-    if ! verdict_exit "$report"; then
-      print_report "$report" >&2
-      printf 'issue-lane: refusing to claim #%s\n' "$issue" >&2
-      exit 3
-    fi
+    case "$(printf '%s' "$report" | jq -r .verdict)" in
+      unclaimed) ;;
+      mine)
+        print_report "$report" >&2
+        printf 'issue-lane: #%s is already your lane; resume it\n' "$issue" >&2
+        exit 0
+        ;;
+      *)
+        print_report "$report" >&2
+        printf 'issue-lane: refusing to claim #%s\n' "$issue" >&2
+        exit 3
+        ;;
+    esac
     capacity="$(live_capacity_json)" || fail "cannot load the listings for lane capacity"
     if [ "$(printf '%s' "$capacity" | jq .remaining)" -eq 0 ]; then
       print_capacity "$capacity" >&2
@@ -558,8 +668,8 @@ case "$command_name" in
       exit 3
     fi
     base_sha="$(gh api "repos/${repo}/git/ref/heads/${default_branch}" --jq .object.sha)"
-    printf 'claim plan: branch %s from %s@%s, assign %s to #%s\n' \
-      "$lane_branch" "$default_branch" "${base_sha:0:12}" "$login" "$issue" >&2
+    printf 'claim plan: branch %s from %s@%s, assign %s to #%s, lane owner %s\n' \
+      "$lane_branch" "$default_branch" "${base_sha:0:12}" "$login" "$issue" "$lane_agent" >&2
     if [ "$dry_run" = true ]; then
       printf 'dry run; no GitHub mutation.\n' >&2
       exit 0
@@ -584,23 +694,80 @@ case "$command_name" in
       printf 'issue-lane: lane limit exceeded or unconfirmed; deleted %s again\n' "$lane_branch" >&2
       exit 3
     fi
-    gh issue edit "$issue" --add-assignee "@me" >/dev/null
+    # The ref is ours; record who holds it. Without the marker nobody could
+    # prove ownership, so undo the ref rather than leave an orphan claim.
+    token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    token_hash="$(printf '%s' "$token" | sha256_short)"
+    marker_body="Lane claimed by \`${lane_agent}\` on \`${lane_branch}\`.
+
+<!-- issue-lane-claim agent=${lane_agent} token-sha256=${token_hash} -->"
+    undo_claim() {
+      gh api -X DELETE "repos/${repo}/git/refs/heads/${lane_branch}" >/dev/null 2>&1 || true
+      fail "$1; claim undone, retry"
+    }
+    # Winning the ref proves no live lane exists, so any older marker is a
+    # leftover (a landed or reopened lane); drop it so ours is the only one.
+    # Any failure here undoes the ref: a claim must not go out next to an old marker.
+    stale_ids="$(gh api "repos/${repo}/issues/${issue}/comments" --paginate \
+      --jq '.[] | select(.body | test("<!-- issue-lane-claim ")) | .id')" \
+      || undo_claim "could not list owner markers on #${issue}"
+    for stale_id in $stale_ids; do
+      gh api -X DELETE "repos/${repo}/issues/comments/${stale_id}" >/dev/null \
+        || undo_claim "could not remove the stale owner marker ${stale_id} from #${issue}"
+    done
+    if ! gh issue comment "$issue" --body "$marker_body" >/dev/null; then
+      # The comment may exist despite the error; roll back only when a lookup
+      # proves it does not, and keep the claim when even that is uncertain.
+      if ! bodies="$(gh api "repos/${repo}/issues/${issue}/comments" --paginate --jq '.[].body')"; then
+        printf 'issue-lane: owner marker on #%s unverified; claim kept. LANE_TOKEN=%s\n' "$issue" "$token" >&2
+        exit 1
+      fi
+      printf '%s' "$bodies" | grep -q "token-sha256=${token_hash} " \
+        || undo_claim "could not record the lane owner on #${issue}"
+    fi
+    # The assignment is a visible hint only; never lose the token over it.
+    gh issue edit "$issue" --add-assignee "@me" >/dev/null \
+      || printf 'issue-lane: could not assign %s to #%s; the claim stands\n' "$login" "$issue" >&2
+    printf 'issue-lane: keep the token in your own session and pass LANE_TOKEN=<token> to check, release, push, and land.\n' >&2
+    printf 'issue-lane: never write it on GitHub, in the repository, or in a path another agent reads.\n' >&2
     jq -n --arg repo "$repo" --argjson issue "$issue" --arg branch "$lane_branch" \
-      --arg base "$base_sha" --arg assignee "$login" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{repo: $repo, issue: $issue, branch: $branch, base_sha: $base, assignee: $assignee, claimed_at: $at}'
+      --arg base "$base_sha" --arg assignee "$login" --arg agent "$lane_agent" --arg token "$token" \
+      --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{repo: $repo, issue: $issue, branch: $branch, base_sha: $base, assignee: $assignee,
+        agent: $agent, token: $token, claimed_at: $at}'
     ;;
 
   release)
     report="$(report_json)"
+    # Any existing claim that is not provably ours, open or closed, with or
+    # without an owner marker, needs the maintainer's --yes.
+    if [ "$confirm" != true ] && printf '%s' "$report" \
+      | jq -e '(.mine | not) and (.verdict == "claimed" or (.claim_branches | length) > 0 or .owner != null)' >/dev/null; then
+      print_report "$report" >&2
+      fail "#${issue} is not your lane; release with its LANE_TOKEN, or pass --yes with the maintainer's approval"
+    fi
+    marker_id="$(printf '%s' "$report" | jq -r '.owner.marker_id // empty')"
     if [ "$(printf '%s' "$report" | jq '.open_prs | length')" -gt 0 ]; then
       print_report "$report" >&2
       fail "an open Pull Request exists; close it first or let it land"
     fi
-    if printf '%s' "$report" | jq -e --arg b "$lane_branch" '.claim_branches | index($b)' >/dev/null; then
+    has_lane_branch="$(printf '%s' "$report" | jq --arg b "$lane_branch" '.claim_branches | index($b) != null')"
+    if [ "$has_lane_branch" = true ] && [ "$confirm" != true ]; then
       ahead="$(gh api "repos/${repo}/compare/${default_branch}...${lane_branch}" --jq .ahead_by)"
-      if [ "$ahead" -gt 0 ] && [ "$confirm" != true ]; then
-        fail "${lane_branch} has ${ahead} commit(s) beyond ${default_branch}; pass --yes to delete it anyway"
-      fi
+      [ "$ahead" -eq 0 ] \
+        || fail "${lane_branch} has ${ahead} commit(s) beyond ${default_branch}; pass --yes to delete it anyway"
+    fi
+    # Remove the marker read above before deleting anything else. It doubles as
+    # the release fence: a second release with the same token fails here,
+    # before it can delete a branch that a replacement claim created in
+    # between. The cost is deliberate: a release interrupted after this point
+    # leaves an ownerless branch that only the maintainer's --yes removes.
+    if [ -n "$marker_id" ]; then
+      gh api -X DELETE "repos/${repo}/issues/comments/${marker_id}" >/dev/null \
+        || fail "could not remove lane owner marker ${marker_id}; another release may have run; check again"
+      printf 'removed lane owner marker %s from #%s\n' "$marker_id" "$issue" >&2
+    fi
+    if [ "$has_lane_branch" = true ]; then
       gh api -X DELETE "repos/${repo}/git/refs/heads/${lane_branch}" >/dev/null
       printf 'deleted branch %s\n' "$lane_branch" >&2
     fi
@@ -608,10 +775,13 @@ case "$command_name" in
       gh issue edit "$issue" --remove-assignee "@me" >/dev/null
       printf 'removed assignee %s from #%s\n' "$login" "$issue" >&2
     fi
-    print_report "$(report_json)"
+    issue_json="$(fetch_issue)"
+    report="$(report_json)"
+    print_report "$report"
     ;;
 
   push)
+    require_mine
     current="$(git rev-parse --abbrev-ref HEAD)"
     printf '%s' "$current" | grep -Eq "^[^/]+/${issue}(-[^/]*)?\$" \
       || fail "check out the lane branch of #${issue} first (on ${current})"
@@ -625,8 +795,8 @@ case "$command_name" in
     git fetch --quiet origin "$remote_tip" "$default_tip"
     scratch="lane-publish/${issue}/rebase"
     if [ "$rebased" = true ]; then
-      # A scratch branch left by an earlier push --rebased is ours: the claim
-      # makes this lane the Issue's only owner.
+      # A scratch branch left by an earlier push --rebased is ours: require_mine
+      # proved this lane is the Issue's only owner.
       gh api -X DELETE "repos/${repo}/git/refs/heads/${scratch}" >/dev/null 2>&1 || true
     fi
     recover="verified publishing cannot publish a merge. Recover: rebase onto ${default_branch} instead and run push ${issue} --rebased"
@@ -694,6 +864,7 @@ case "$command_name" in
     [ -n "$land_head" ] || land_head="$(git rev-parse HEAD)"
     printf '%s' "$land_head" | grep -Eq '^[0-9a-f]{40}$' || fail "land needs --head <full reviewed commit SHA>"
     printf '%s' "$timeout_min" | grep -Eq '^[0-9]+$' || fail "--timeout-min needs whole minutes"
+    require_mine
     snapshot="$(land_pr_json)"
     land_guard "$snapshot"
     if [ "$(printf '%s' "$snapshot" | jq -r '.autoMergeRequest != null')" = true ]; then

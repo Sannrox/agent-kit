@@ -31,7 +31,8 @@ stalled lane. It is not an orchestration-only role.
    `capacity` counts: open implementation Pull Requests plus claim branches
    without one, with stale claim branches reported but not counted. Do not
    count assigned or planned work as a running lane, and do not start a lane
-   for an Issue whose check says `claimed`.
+   for an Issue whose check says `claimed`, even when your own login claimed
+   it: only the matching `LANE_TOKEN` makes a lane yours (`mine`).
 3. Reject candidate pairs that touch the same collision surface listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`. Run such Issues in sequence.
 4. Resolve one authority ceiling for the run. Claiming needs Publish or Land,
    or an explicit claim authorization; without it the lanes are invisible to
@@ -47,11 +48,13 @@ The lead claims every lane on GitHub before any worker starts, so that workers
 on other machines and other leads see the lanes immediately:
 
 ```sh
-bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
+LANE_AGENT=<agent> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" claim <issue>
 ```
 
-The script prints the branch `<type>/<issue>`, the base SHA, and the assignee.
-Record both in the ledger. Exit code 3 means another lane claimed the Issue
+The script prints the branch `<type>/<issue>`, the base SHA, the assignee, and
+the lane token. Record branch and base in the ledger; hand the token only to
+that lane's worker, which passes it as `LANE_TOKEN` to `check`, `release`,
+`push`, and `land`. Never write the token into the ledger on GitHub. Exit code 3 means another lane claimed the Issue
 between the frontier run and now, or the lane limit is reached (the script
 prints which): drop the candidate, do not rename the branch, and refill the
 slot from the frontier order only if `capacity` shows a free lane.
@@ -109,11 +112,13 @@ Lane brief
 3. Preserve a stalled lane's branch, Pull Request, and evidence before taking it
    over. Continue on the same claim branch; do not open a second lane for the
    same Issue. Another machine's lane looks the same from GitHub, so a lane the
-   lead did not claim is not the lead's to take over without the maintainer.
+   lead did not claim, or whose token it does not hold, is not the lead's to
+   take over without the maintainer; `push` and `land` refuse it without
+   `--yes`.
 4. A blocked lane is reported and its claim kept until the maintainer decides.
    Never repurpose its branch or worktree for another Issue. A lane abandoned
    before any commit is released with
-   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`.
+   `LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`.
 
 ## 4. Publish and land in sequence
 
