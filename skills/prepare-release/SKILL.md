@@ -11,8 +11,8 @@ Assemble decision-ready release evidence and, when authorized, carry the
 release through to a verified published version. The repository's release
 procedure (linked from `AGENTS.md`, often `RELEASING.md`) owns the tag
 scheme, the release workflow, and retry rules; this Skill follows it.
-Releases come from `main`, or from the matching maintenance line when a
-pinned older line needs a fix
+The newest release always comes from `main`. A matching maintenance line
+ships only patches for a pinned line older than the newest final release
 ([references/maintenance-lines.md](references/maintenance-lines.md)).
 
 ## Establish the authority ceiling
@@ -34,9 +34,12 @@ published release.
 
 1. Identify the target version, base tag, target commit, merged PR range, and
    the milestone titled with the target version (milestones are release
-   versions; see `shape-work-item`). A patch on a line older than `main`
-   follows [references/maintenance-lines.md](references/maintenance-lines.md):
-   the base is that `release-<line>` branch, not `main`. Read the version
+   versions; see `shape-work-item`). A patch on a line older than the newest
+   final release follows
+   [references/maintenance-lines.md](references/maintenance-lines.md): the
+   base is that `release-<line>` branch, not `main`. A fix for the newest
+   line releases from `main`, as the next minor when `main` has breaking
+   changes since the last tag; never open a `release-*` line for it. Read the version
    source named in `AGENTS.md`, CI, and open release-blocking Issues. Every
    open Issue in the version milestone is either closed by this release or
    moved to a later version milestone by the maintainer; list each one as
@@ -139,4 +142,5 @@ Separate verified facts from recommendations.
   does.
 - Never edit, re-publish, or delete a published release; cut a new version.
 - Release only from a commit on `main` or the matching maintenance line.
+- Never cut the newest release from a maintenance line.
 - Change `CHANGELOG.md` only in the version-bump Pull Request.
