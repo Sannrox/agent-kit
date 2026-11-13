@@ -132,8 +132,12 @@ Lane brief
    lane that conflicts with a sibling's landing reports exit 5 instead of
    merging.
 3. After each landing, run `git fetch --prune origin` and recompute the
-   frontier. Ask the remaining lanes to check `mergeable` and their tests
-   against the new `main`. Refresh a lane onto `main` only for a conflict, a
+   frontier with
+   `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/advance-issue-frontier/scripts/frontier.sh"`.
+   While the run's scope allows more Issues, refill the freed lane from it
+   through "1. Select lanes"; record the refill in the ledger. Ask the
+   remaining lanes to check `mergeable` and their tests against the new
+   `main`. Refresh a lane onto `main` only for a conflict, a
    failing gate, an explicit request, or a sibling landing on a shared surface.
 4. Remove the landed lane's local state, serialized with the other shared
    mutations on that machine:
