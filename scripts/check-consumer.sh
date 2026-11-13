@@ -13,9 +13,12 @@
 #     (validate-workflow-skills.sh; gh-verified-push.sh is optional and not listed);
 #   - AGENTS.md has the ## Agent skill profile section with its contract
 #     headings (templates/agent-skill-profile.md); .agents/project.md is gone;
+#   - .claude/skills, when present, is a symlink to ../.agents/skills, because
+#     Claude Code discovers skills only under .claude/skills;
 #   - AGENTS.md references Sannrox/agent-kit and keeps the parallel-lane policy;
 #     CLAUDE.md points to AGENTS.md; .gitignore ignores /.worktrees/.
-# --render rewrites the default stubs, existing opt-in stubs and vendored scripts.
+# --render rewrites the default stubs, existing opt-in stubs and vendored scripts,
+# and creates the .claude/skills link when nothing is at that path.
 set -euo pipefail
 
 kit="${1:?kit dir}"; root="${2:?repo root}"; mode="${3:-check}"
@@ -64,6 +67,13 @@ for f in $scripts; do
   if [ "$mode" = "--render" ]; then cp "${kit}/scripts/${f}" "${root}/scripts/${f}"; chmod +x "${root}/scripts/${f}"; fi
   cmp -s "${kit}/scripts/${f}" "${root}/scripts/${f}" || fail "scripts/${f} differs from agent-kit main (run --render)"
 done
+
+link="${root}/.claude/skills"
+if [ "$mode" = "--render" ] && [ ! -e "$link" ] && [ ! -L "$link" ]; then
+  mkdir -p "${root}/.claude"; ln -s ../.agents/skills "$link"
+fi
+{ [ ! -e "$link" ] && [ ! -L "$link" ]; } || [ "$(readlink "$link")" = "../.agents/skills" ] \
+  || fail ".claude/skills must be a symlink to ../.agents/skills so Claude Code finds the stubs"
 
 [ ! -e "${root}/.agents/project.md" ] || fail ".agents/project.md is retired; fold its unique content into ## Agent skill profile in AGENTS.md"
 grep -Fqx "## Agent skill profile" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Agent skill profile (see templates/agent-skill-profile.md)"

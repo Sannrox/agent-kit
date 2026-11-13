@@ -48,6 +48,7 @@ grep -Fq 'maintenance line is not latest.' skills/prepare-release/SKILL.md \
   || fail "prepare-release still treats every final release as latest"
 grep -Fq 'git cherry-pick -x' skills/deliver-ready-issue/SKILL.md || fail "deliver-ready-issue does not name the maintenance-line backport"
 grep -Eq 'issue-lane\.sh"?[[:space:]]+check' skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use issue-lane.sh check"
+grep -Fq scripts/frontier.sh skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use scripts/frontier.sh"
 
 for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax error in $s"; done
 bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity --self-test >/dev/null || fail "issue-lane.sh capacity self-test failed"
@@ -62,6 +63,14 @@ bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 touch "$tmp/.agents/project.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: leftover .agents/project.md was not detected"; fi
 rm "$tmp/.agents/project.md"
+rm "$tmp/.claude/skills"
+bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null || fail "self-test: a consumer without the .claude/skills link must still pass"
+bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
+[ "$(readlink "$tmp/.claude/skills")" = ../.agents/skills ] || fail "self-test: --render did not link .claude/skills to .agents/skills"
+rm "$tmp/.claude/skills" && mkdir "$tmp/.claude/skills"
+if bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null 2>&1; then fail "self-test: a real .claude/skills directory was accepted"; fi
+[ -d "$tmp/.claude/skills" ] && [ ! -L "$tmp/.claude/skills" ] || fail "self-test: --render replaced a real .claude/skills directory"
+rmdir "$tmp/.claude/skills"
 printf 'drift\n' >> "$tmp/.agents/skills/verify-change/SKILL.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: drifted stub was not detected"; fi
 mkdir -p "$tmp/.agents/skills/ui-e2e" && cp skills/ui-e2e/SKILL.md "$tmp/.agents/skills/ui-e2e/"
@@ -70,11 +79,81 @@ if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "sel
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 
+# Self-test: frontier.sh against a fake gh serving fixture Issues of o/r.
+# Referenced Issues: 1 completed, 2 open, 3 not planned, x/y#4 completed in
+# another repository, 404 missing. Relabels are recorded in calls.
+fr="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-frontier.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr"' EXIT
+mkdir -p "$fr/bin"
+cat > "$fr/bin/gh" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in
+  "issue list -R o/r"*) cat "$FAKE/issues" ;;
+  "label list -R o/r"*) echo '["status:ready","status:blocked","status:triage"]' ;;
+  "api repos/o/r/issues/1 "*) echo '{"state":"closed","reason":"completed","pr":false}' ;;
+  "api repos/o/r/issues/2 "*) [ -f "$FAKE/down" ] && { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+    echo '{"state":"open","reason":null,"pr":false}' ;;
+  "api repos/o/r/issues/3 "*) echo '{"state":"closed","reason":"not_planned","pr":false}' ;;
+  "api repos/x/y/issues/4 "*) echo '{"state":"closed","reason":"completed","pr":false}' ;;
+  "api repos/o/r/issues/1"[0-9]" "*) echo '{"state":"open","reason":null,"pr":false}' ;;
+  "api repos/o/r/issues/404 "*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  "issue edit"*) echo "$*" >> "$FAKE/calls" ;;
+  *) echo "fake gh: unexpected $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$fr/bin/gh"
+fixture() { # number labels-csv dependency-section
+  jq -cn --argjson n "$1" --arg l "$2" --arg d "$3" \
+    '{number: $n, title: "t\($n)", labels: [$l | split(",")[] | select(. != "") | {name: .}],
+      body: "## Summary\n\nx\n\n## GitHub dependencies\n\n\($d)\n\n### Checklist\n\n- [x] done\n"}'
+}
+{ fixture 10 status:blocked '- none'
+  fixture 11 status:ready '- #1
+- x/y#4 (delivered)'
+  fixture 12 status:ready '- https://github.com/o/r/issues/2'
+  fixture 13 status:ready 'Blocked on a week of play after Sannrox/r#1 (delivered).'
+  fixture 14 status:ready '- #404'
+  fixture 15 status:ready '- #15'
+  fixture 16 status:ready '- #17'
+  fixture 17 status:blocked '- #16'
+  fixture 18 status:ready,status:triage '- #2'
+  fixture 19 '' '- #2'
+  fixture 20 status:ready '- #3'
+  jq -cn '{number: 21, title: "t21", labels: [{name: "status:ready"}], body: "no section"}'
+  fixture 22 status:ready,status:blocked '- none'
+  fixture 23 status:blocked '- #1 (after the owner approves)'
+  fixture 24 status:blocked '- #2
+- #3'
+} | jq -s . > "$fr/issues"
+frontier() { # expected-exit args...
+  local code=0 want="$1"; shift
+  out="$(FAKE="$fr" PATH="$fr/bin:$PATH" bash skills/advance-issue-frontier/scripts/frontier.sh --repo o/r "$@" 2>&1)" || code=$?
+  [ "$code" = "$want" ] || fail "self-test: frontier.sh $* exited $code, expected $want: $out"
+}
+: > "$fr/calls"
+frontier 0 --json
+[ ! -s "$fr/calls" ] || fail "self-test: frontier.sh without --apply relabeled: $(cat "$fr/calls")"
+want='{"10":"ready","11":"ready","12":"blocked","13":"judgment","14":"anomalous","15":"anomalous","16":"anomalous","17":"anomalous","18":"blocked","19":"blocked","20":"judgment","21":"judgment","22":"ready","23":"judgment","24":"judgment"}'
+printf '%s' "$out" | jq -e --argjson w "$want" '[.issues[] | {key: (.number | tostring), value: .state}] | from_entries == $w' >/dev/null \
+  || fail "self-test: frontier.sh states differ from $want: $out"
+frontier 0 --apply
+sort "$fr/calls" | diff - <(printf '%s\n' \
+  'issue edit 10 -R o/r --add-label status:ready --remove-label status:blocked' \
+  'issue edit 12 -R o/r --add-label status:blocked --remove-label status:ready' \
+  'issue edit 14 -R o/r --add-label status:blocked --remove-label status:ready' \
+  'issue edit 15 -R o/r --add-label status:blocked --remove-label status:ready' \
+  'issue edit 16 -R o/r --add-label status:blocked --remove-label status:ready' \
+  'issue edit 22 -R o/r --remove-label status:blocked') >/dev/null \
+  || fail "self-test: frontier.sh --apply made the wrong edits: $(cat "$fr/calls")"
+: > "$fr/calls"; touch "$fr/down"
+frontier 1 --apply
+[ ! -s "$fr/calls" ] || fail "self-test: frontier.sh relabeled from a partial view: $(cat "$fr/calls")"
+rm "$fr/down"
+
 # Self-test: gh-verified-push.sh warns once per pushed file that becomes
 # 100755 (added, or changed from 100644), and not for a modified file that
 # already was. A dry run with --repo and --expected-oid never touches the
 # network; a failing gh stub proves it.
-push="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-push.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$push"' EXIT
+push="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-push.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$push"' EXIT
 mkdir -p "$push/bin" "$push/repo"
 printf '#!/bin/sh\necho "gh must not be called" >&2\nexit 1\n' > "$push/bin/gh"; chmod +x "$push/bin/gh"
 g() { git -C "$push/repo" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
@@ -96,7 +175,7 @@ if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test:
 # Self-test: issue-lane.sh against a fake gh. Each `gh pr view` serves the
 # next Pull Request snapshot (the last one repeats); mutations are recorded.
 # Issue #7 has the claim branch feat/7 and one owner marker (comments).
-land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$push" "$land"' EXIT
+land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$push" "$land"' EXIT
 mkdir -p "$land/bin"
 cat > "$land/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
