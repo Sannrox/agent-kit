@@ -77,7 +77,10 @@ for path in sorted(p for p in out.iterdir() if p.is_file() and p.name != "SHA256
 ' "$OUT"
 
 LABEL_ARGS=()
-if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]] && command -v gh >/dev/null 2>&1; then
+if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]]; then
+  # Empty gate flags would read as a release that passed no gates, so a
+  # tagged run fails closed when the merged pull requests cannot be read.
+  command -v gh >/dev/null 2>&1 || fail "gh is required to read gate flags for ${TAG}"
   # Gate flags cover exactly the pull requests merged into the release commit
   # since the nearest final tag before it: an rc tag never starts the range,
   # or a final release would drop gates first seen in its release candidates,
@@ -90,13 +93,15 @@ if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]] && command -v gh >/dev/null 2>&1; the
     range="${prev}..${GIT_SHA}"
     query="merged:>=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd "$prev") ${query}"
   fi
+  merged="$(gh pr list --state merged --limit 1000 --search "$query" --json mergeCommit,labels \
+    --jq '.[] | select(.mergeCommit != null) | .mergeCommit.oid as $oid | .labels[] | "\($oid)\t\(.name)"')" \
+    || fail "cannot list merged pull requests for gate flags"
+  in_range="$(git rev-list "$range")"
   while IFS= read -r label; do
     [[ -n "$label" ]] && LABEL_ARGS+=("--label" "$label")
   done < <(
-    gh pr list --state merged --limit 1000 --search "$query" --json mergeCommit,labels \
-      --jq '.[] | select(.mergeCommit != null) | .mergeCommit.oid as $oid | .labels[] | "\($oid)\t\(.name)"' 2>/dev/null \
-      | awk -F'\t' 'NR == FNR { in_range[$1] = 1; next } in_range[$1] { print $2 }' <(git rev-list "$range") - \
-      | sort -u || true
+    awk -F'\t' 'NR == FNR { in_range[$1] = 1; next } in_range[$1] { print $2 }' \
+      <(printf '%s\n' "$in_range") <(printf '%s\n' "$merged") | sort -u
   )
 fi
 

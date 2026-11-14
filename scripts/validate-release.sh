@@ -100,6 +100,12 @@ grep -F 'query="merged:<=$(TZ=UTC git log -1' scripts/release-package.sh >/dev/n
   || fail "release-package.sh must bound the gate-flag search at the release commit"
 grep -F 'in_range[$1] { print $2 }' scripts/release-package.sh >/dev/null \
   || fail "release-package.sh must keep only gate flags of pull requests in the release range"
+# A hidden lookup failure would publish empty gate flags.
+grep -F '|| fail "cannot list merged pull requests for gate flags"' scripts/release-package.sh >/dev/null \
+  || fail "release-package.sh must fail a tagged run when gate flags cannot be read"
+if grep -E 'gh pr list.*2>/dev/null|command -v gh >/dev/null 2>&1; then' scripts/release-package.sh >/dev/null; then
+  fail "release-package.sh must not skip or silence the gate-flag lookup"
+fi
 # The lookup hides gh failures, so a missing permission would silently drop
 # every gate flag.
 python3 - "$workflow" <<'PY_PR' || fail "${workflow} package job must request pull-requests: read for gate flags"
@@ -108,6 +114,23 @@ body = open(sys.argv[1]).read().split("\njobs:\n", 1)[1]
 jobs = {b.split(":", 1)[0].strip(): b for b in re.split(r"(?m)^(?=  [a-z][a-z0-9-]*:\n)", body)}
 sys.exit(0 if "      pull-requests: read" in jobs.get("package", "") else 1)
 PY_PR
+# The published manifest is the attested one: the attest job finalizes and
+# attests it, and the publish job never rewrites it.
+python3 - "$workflow" <<'PY_MANIFEST' || fail "${workflow} must attest the final manifest in the attest job and publish it unchanged"
+import re, sys
+body = open(sys.argv[1]).read().split("\njobs:\n", 1)[1]
+jobs = {b.split(":", 1)[0].strip(): b for b in re.split(r"(?m)^(?=  [a-z][a-z0-9-]*:\n)", body)}
+attest, publish = jobs.get("attest", ""), jobs.get("publish", "")
+record = attest.find("- name: Record attestation URLs on the manifest")
+sign = attest.find("- name: Attest manifest")
+ok = (
+    0 <= record < sign
+    and "subject-path: dist/agent-kit-release.json" in attest[sign:]
+    and "write_text" not in publish
+    and "name: agent-kit-manifest" in publish
+)
+sys.exit(0 if ok else 1)
+PY_MANIFEST
 grep -F "id-token: write" "$workflow" >/dev/null || fail "${workflow} must request id-token for provenance"
 grep -F "attestations: write" "$workflow" >/dev/null || fail "${workflow} must request attestations permission"
 head_perm="$(sed -n '1,/^jobs:/p' "$workflow")"
