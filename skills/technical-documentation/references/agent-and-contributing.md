@@ -136,6 +136,22 @@ Source: https://github.com/facebook/react/blob/main/CONTRIBUTING.md
 4. Rails/Kubernetes/Atom/GitHub Docs/React: contributor guidance patterns at different project scales.
 5. Large product repos with AGENTS + CONTRIBUTING + VISION cohesion (for example openclaw/openclaw) as optional references only.
 
+## Adding a rule
+
+These apply to `AGENTS.md` files, skills, and review prompts.
+
+1. A new rule cites the incident that prompted it (an Issue, Pull Request, or
+   commit) in the change that adds it. No incident, no rule.
+2. A new rule passes the deletion test: without it, a capable engineer new to
+   the repository does the wrong thing. Otherwise leave it out.
+3. A rule names the exact failure it prevents. No catch-all exception such as
+   "unless security, data, or money is involved".
+4. A rule has one owner. Adding it in one file removes its looser and stricter
+   copies from the other instruction files in the same change; they link to
+   the owner instead.
+5. A rule too long for the top-level file moves to the guide that owns the
+   topic and leaves a one-line pointer.
+
 ## Practical merge policy
 
 When these rules conflict:

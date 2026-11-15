@@ -41,11 +41,17 @@ Run the narrowest useful checks first, then expand according to change risk.
    its owning boundary, not kept for count.
 6. Review failures against the changed scope. Report pre-existing failures with
    evidence; do not relabel a failure as pre-existing without comparison.
+7. Ask of each check: could it pass while the stated outcome is still broken?
+   If so, it is not evidence for the outcome; name the gap.
+8. A command that failed twice the same way with no new evidence fails a third
+   time. Change the approach or report the blocker; do not retry it.
 
 ## Output
 
 Report:
 
+- the commit the checks ran against (`git rev-parse HEAD`) and whether the
+  tree was clean; results from an earlier commit are named as such;
 - commands run and pass/fail result;
 - focused behavior covered;
 - checks skipped with reasons;

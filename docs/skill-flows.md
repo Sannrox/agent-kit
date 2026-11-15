@@ -68,8 +68,13 @@ flowchart TD
     owner -->|"yes"| route["Route it there and record it<br/>under GitHub dependencies"]
     owner -->|"no"| classify
     route --> classify["Classify: bug, feature, refactor, or research"]
-    classify --> draft["Draft: problem, observable outcome, non-goals,<br/>acceptance evidence, area, risks"]
-    draft --> kind{"What kind of<br/>open question is left?"}
+    classify --> many{"Several findings<br/>from a review or audit?"}
+    many -->|"yes"| split["One Issue per finding. Group only<br/>findings that one fix closes"]
+    many -->|"no"| draft
+    split --> draft["Draft: problem, observable outcome, non-goals,<br/>acceptance evidence, area, risks.<br/>Say how each claim is known"]
+    draft --> known{"Bug whose problem<br/>is not verified?"}
+    known -->|"yes"| unverified(["Stop: Issue stays in status:triage until the<br/>problem is reproduced or read from source"])
+    known -->|"no"| kind{"What kind of<br/>open question is left?"}
     kind -->|"none"| ready["Recommend status:ready"]
     kind -->|"a fact"| lookup["Look it up in code, docs,<br/>or Issue history"]
     kind -->|"routine or reversible choice"| assume["Decide it, mark it Assumed:<br/>in the body"]
@@ -163,7 +168,7 @@ flowchart TD
     start(["Lane worktree ready"]) --> impact[["assess-change-impact"]]
     impact --> fits{"One reviewable<br/>Pull Request?"}
     fits -->|"no"| split(["Stop: recommend a split"])
-    fits -->|"yes"| build["Implement one outcome. Each new or changed<br/>test passes the test-audit authoring gate"]
+    fits -->|"yes"| build["Implement one outcome. A fix names the line<br/>where the fault shows first. Each new or changed<br/>test passes the test-audit authoring gate"]
     build --> simplify[["simplify-change"]]
     simplify --> verify[["verify-change"]]
     verify --> review{"autoreview:<br/>accepted findings?"}
@@ -326,10 +331,13 @@ flowchart TD
     pre -->|"no"| blocking["Report as caused by the change"]
     fail -->|"no"| report
     existing --> report
-    blocking --> report(["Report: commands and results, behavior covered,<br/>skipped checks with reasons, remaining uncertainty"])
+    blocking --> report(["Report: commit checked, commands and results,<br/>behavior covered, skipped checks with reasons,<br/>remaining uncertainty"])
 ```
 
 Skipped service or kernel tests are named with their reason and residual risk.
+A check that could pass while the outcome is still broken is named as a gap,
+not counted as evidence. A command that failed twice the same way is not
+retried a third time.
 
 ## validate-behavior
 
