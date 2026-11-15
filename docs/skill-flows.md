@@ -48,8 +48,8 @@ flowchart TD
     merged -->|"when you ask for a release"| release[["prepare-release"]]
 ```
 
-Four skills stand apart from the Issue flow and run when you call them:
-`improve-performance`, `ui-e2e`, `technical-documentation`, and
+Five skills stand apart from the Issue flow and run when you call them:
+`improve-performance`, `ci-audit`, `ui-e2e`, `technical-documentation`, and
 `refactor-docs` (which loads `technical-documentation` first).
 
 ## shape-work-item
@@ -461,6 +461,48 @@ flowchart TD
     worse -->|"no"| gain{"Measurable gain?"}
     gain -->|"no"| revert(["Revert the change"])
     gain -->|"yes"| out(["Pull Request evidence: workload, rule,<br/>before and after table, waste removed"])
+```
+
+## ci-audit
+
+Two entry points: the admission gate for a new job or a wider trigger, and an
+audit of the jobs a repository already runs. Zero failures alone never
+condemns a job.
+
+```mermaid
+flowchart TD
+    start(["A CI job"]) --> mode{"New job or wider trigger,<br/>or an audit of existing jobs?"}
+
+    mode -->|"new or wider"| g1{"Catches a failure<br/>no existing job catches?"}
+    g1 -->|"no"| reject(["Rejected"])
+    g1 -->|"yes"| g2{"Can it be a step<br/>in an existing job?"}
+    g2 -->|"yes"| step(["Added as a step"])
+    g2 -->|"no"| g3["Pick the latest trigger that still catches it:<br/>Pull Request, default-branch push, schedule, release"]
+    g3 --> g4["Scope the trigger to the paths that can break it"]
+    g4 --> g5{"Longest job on<br/>a Pull Request?"}
+    g5 -->|"yes"| justify(["Admitted, with the wall-time cost<br/>justified in the Pull Request"])
+    g5 -->|"no"| admit(["Admitted"])
+
+    mode -->|"audit"| measure["Run scripts/ci-report.sh over<br/>at least a week of normal work"]
+    measure --> alone{"Failed alone<br/>in the window?"}
+    alone -->|"yes"| wall{"Sets the wall time?"}
+    wall -->|"no"| keep(["Keep"])
+    wall -->|"yes"| speed[["improve-performance"]]
+    alone -->|"no"| skipped{"Skipped<br/>every time?"}
+    skipped -->|"yes"| narrow["Narrow the workflow trigger<br/>or split the workflow"]
+    skipped -->|"no"| outside{"Fails for reasons<br/>outside the diff?"}
+    outside -->|"yes"| soft["Non-blocking on Pull Requests,<br/>strict on a schedule"]
+    outside -->|"no"| bar{"Reports elsewhere, guards a rare costly break,<br/>or was added on purpose?"}
+    bar -->|"yes"| keep
+    bar -->|"no"| order["Scope by path, else move to a later trigger,<br/>else merge, else delete and name the owning job"]
+    narrow --> required
+    soft --> required
+    order --> required{"Changes a required check?"}
+    required -->|"yes"| protect["Update the required checks first,<br/>or gate on one aggregate job"]
+    required -->|"no"| report
+    protect --> report
+    speed --> report
+    report(["Report: window, wall time, table, one decision per job.<br/>Rerun after the changes land"])
 ```
 
 ## ui-e2e

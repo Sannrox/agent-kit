@@ -49,6 +49,7 @@ grep -Fq 'maintenance line is not latest.' skills/prepare-release/SKILL.md \
 grep -Fq 'git cherry-pick -x' skills/deliver-ready-issue/SKILL.md || fail "deliver-ready-issue does not name the maintenance-line backport"
 grep -Eq 'issue-lane\.sh"?[[:space:]]+check' skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use issue-lane.sh check"
 grep -Fq scripts/frontier.sh skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use scripts/frontier.sh"
+grep -Fq scripts/ci-report.sh skills/ci-audit/SKILL.md || fail "ci-audit does not use scripts/ci-report.sh"
 
 for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax error in $s"; done
 bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity --self-test >/dev/null || fail "issue-lane.sh capacity self-test failed"
@@ -149,11 +150,74 @@ frontier 1 --apply
 [ ! -s "$fr/calls" ] || fail "self-test: frontier.sh relabeled from a partial view: $(cat "$fr/calls")"
 rm "$fr/down"
 
+# Self-test: ci-report.sh against a fake gh serving the runs of o/r. Commit a
+# passes. On b only CI / build fails, and the Scan run is a rerun. Commit c has
+# a superseded CI run (5) that passed and a newer one (6) where build and lint
+# fail together. CI / deploy is skipped every time.
+ci="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-ci.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$ci"' EXIT
+mkdir -p "$ci/bin" "$ci/jobs"
+cat > "$ci/bin/gh" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in
+  "run list -R o/r --event pull_request --status completed --limit 300 "*) cat "$FAKE/runs" ;;
+  "api --paginate repos/o/r/actions/runs/"*)
+    id="${3#repos/o/r/actions/runs/}"; id="${id%%/*}"
+    [ -f "$FAKE/down" ] && [ "$id" = 7 ] && { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+    jq -c "$5" "$FAKE/jobs/$id" ;;
+  *) echo "fake gh: unexpected $*" >&2; exit 1 ;;
+esac
+FAKE
+chmod +x "$ci/bin/gh"
+ci_run() { # id workflow sha created-at attempt
+  jq -cn --argjson id "$1" --arg w "$2" --arg s "$3" --arg c "$4" --argjson a "$5" \
+    '{databaseId: $id, workflowName: $w, headSha: $s, createdAt: $c, attempt: $a}'
+}
+ci_job() { # name conclusion hour seconds
+  jq -cn --arg n "$1" --arg c "$2" --arg h "$3" --argjson s "$4" \
+    '("2026-01-01T\($h):00:" ) as $t
+     | {name: $n, conclusion: $c, created_at: "\($t)00Z",
+        started_at: (if $c == "skipped" then "\($t)00Z" else "\($t)10Z" end),
+        completed_at: (if $c == "skipped" then "\($t)00Z"
+                       else ("\($t)10Z" | fromdateiso8601 + $s | todateiso8601) end)}'
+}
+ci_jobs() { jq -s '{jobs: .}' > "$ci/jobs/$1"; }
+{ ci_run 1 CI a 2026-01-01T00:00:00Z 1; ci_run 2 Scan a 2026-01-01T00:00:00Z 1
+  ci_run 3 CI b 2026-01-01T01:00:00Z 1; ci_run 4 Scan b 2026-01-01T01:00:00Z 2
+  ci_run 5 CI c 2026-01-01T02:00:00Z 1; ci_run 6 CI c 2026-01-01T02:00:30Z 1
+  ci_run 7 Scan c 2026-01-01T02:00:00Z 1
+} | jq -s . > "$ci/runs"
+{ ci_job build success 00 600; ci_job lint success 00 60; ci_job deploy skipped 00 0; } | ci_jobs 1
+ci_job scan success 00 300 | ci_jobs 2
+{ ci_job build failure 01 180; ci_job lint success 01 60; ci_job deploy skipped 01 0; } | ci_jobs 3
+ci_job scan success 01 300 | ci_jobs 4
+{ ci_job build success 02 600; ci_job lint success 02 60; ci_job deploy skipped 02 0; } | ci_jobs 5
+{ ci_job build failure 02 600; ci_job lint failure 02 60; ci_job deploy skipped 02 0; } | ci_jobs 6
+ci_job scan success 02 300 | ci_jobs 7
+ci_report() { # expected-exit args...
+  local code=0 want="$1"; shift
+  out="$(FAKE="$ci" PATH="$ci/bin:$PATH" bash skills/ci-audit/scripts/ci-report.sh --repo o/r "$@" 2>&1)" || code=$?
+  [ "$code" = "$want" ] || fail "self-test: ci-report.sh $* exited $code, expected $want: $out"
+}
+ci_report 0 --json
+# ran, skipped, failed, failed alone, last (b is a rerun, so it sets no wall time), median seconds
+want='{"CI / build":[3,0,2,1,2,600],"CI / deploy":[0,3,0,0,0,null],"CI / lint":[3,0,1,0,0,60],"Scan / scan":[3,0,0,0,0,300]}'
+printf '%s' "$out" | jq -e --argjson w "$want" \
+  '([.jobs[] | {key: "\(.workflow) / \(.job)", value: [.ran, .skipped, .failed, .failed_alone, .last, .median_s]}] | from_entries == $w)
+   and ([.runs, .rerun_runs, .commits, .clean_commits, .wall_median_s] == [6, 1, 3, 2, 610])' >/dev/null \
+  || fail "self-test: ci-report.sh report differs from $want: $out"
+ci_report 0
+printf '%s\n' "$out" | grep -Fq '| CI / build | 3 | 0 | 0 | 2 | 1 | 10 | 10 | 10 | 2 | 23 |' \
+  || fail "self-test: ci-report.sh table lacks the CI / build row: $out"
+touch "$ci/down"
+ci_report 1 --json
+printf '%s' "$out" | grep -q '"jobs"' && fail "self-test: ci-report.sh reported from a partial view: $out"
+rm "$ci/down"
+
 # Self-test: gh-verified-push.sh warns once per pushed file that becomes
 # 100755 (added, or changed from 100644), and not for a modified file that
 # already was. A dry run with --repo and --expected-oid never touches the
 # network; a failing gh stub proves it.
-push="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-push.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$push"' EXIT
+push="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-push.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$ci" "$push"' EXIT
 mkdir -p "$push/bin" "$push/repo"
 printf '#!/bin/sh\necho "gh must not be called" >&2\nexit 1\n' > "$push/bin/gh"; chmod +x "$push/bin/gh"
 g() { git -C "$push/repo" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
@@ -178,7 +242,7 @@ if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test:
 # Comments are stateful: deleting one removes it, `gh issue comment` appends
 # id 99 (after the markers in rival, when that file exists), and marker_gone
 # makes a marker delete fail as if another caller had removed it.
-land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$push" "$land"' EXIT
+land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$ci" "$push" "$land"' EXIT
 mkdir -p "$land/bin"
 cat > "$land/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
