@@ -18,7 +18,8 @@ live on GitHub because lanes may run on different machines; worktrees only
 isolate lanes that share a machine. To deliver several ready Issues at once,
 the lead follows [references/parallel-delivery.md](references/parallel-delivery.md)
 and runs this Skill once per lane. [scripts/issue-lane.sh](scripts/issue-lane.sh)
-inspects, claims, releases, publishes, and lands a lane deterministically.
+inspects, claims, takes over, releases, publishes, and lands a lane
+deterministically.
 
 ## Establish the authority ceiling
 
@@ -58,14 +59,29 @@ force-pushing protected branches, or weakening repository protections.
    `LANE_TOKEN=<token>` when you hold a lane: `mine` (exit 0) means the token
    matches and you resume. `claimed` (exit 3) means another lane owns the
    Issue, even when your own GitHub login claimed it, because several agents
-   may share one login. Continue it only when the user directs the takeover,
-   and preserve the existing branch, Pull Request, and evidence first. A
-   claim without a lane owner, or idle for six hours or more, is reported as a
-   hint; it is still not yours. An assignment older than
-   six hours without branch or Pull Request is reported as a hint; ask the
-   maintainer before claiming. Then inspect this machine with
+   may share one login. `check` also reports a lane worktree on this machine.
+   When its hint says the lane is stalled there (no file changed for 30
+   minutes, `ISSUE_LANE_STALL_MINUTES`), take the lane over and continue in
+   that worktree, uncommitted work included:
+
+   ```sh
+   LANE_AGENT=<agent> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" takeover <issue>
+   ```
+
+   It keeps the branch, its commits, and the Pull Request, fences the previous
+   owner (its token stops working), and prints your token. A lane whose Pull
+   Request checks are still running is waiting, not stalled: leave it. Stop a
+   leftover process of the previous lane only after the takeover. Never
+   release and claim again to take a lane over; that deletes its branch and
+   leaves the Issue unclaimed in between. A lane that is not stalled on this
+   machine is taken over only when the user directs it, with
+   `takeover <issue> --yes`. A claim without a lane owner, or idle for six
+   hours or more, is reported as a hint; it is still not yours. An assignment
+   older than six hours without branch or Pull Request is reported as a hint;
+   ask the maintainer before claiming. Then inspect this machine with
    `git worktree list --porcelain` and `git branch --list '*/<issue>*'`; a
-   local lane for the Issue is somebody's isolation, not yours.
+   local lane for the Issue that you did not take over is somebody's
+   isolation, not yours.
 5. Confirm that the Issue is open, unblocked, focused enough for one Pull
    Request, and has testable acceptance criteria.
 
@@ -326,7 +342,8 @@ Return to the maintainer in the session (not on GitHub):
   primary checkout or another lane's worktree, and never delete a worktree or
   branch you do not own.
 - Never work around a lost claim race with a differently named branch, a
-  forced ref update, or by removing another lane's assignment.
+  forced ref update, or by removing another lane's assignment. Never release
+  and claim again a lane that `takeover` can move.
 - Keep secrets, credentials, logs, databases, and runtime state out of Git.
 - Never put hostnames, FQDNs, IP addresses, home directories, absolute worktree
   paths, LAN or employer network names, deployment or environment state, image

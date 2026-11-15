@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Inspect, claim, release, publish, or land the delivery lane of one GitHub
-# Issue, or report the repository's lane capacity.
+# Inspect, claim, take over, release, publish, or land the delivery lane of one
+# GitHub Issue, or report the repository's lane capacity.
 #
 # A lane claim lives on GitHub so agents on different machines see it:
 #   1. the branch <type>/<issue>, created from the default branch with an
@@ -18,6 +18,18 @@
 # token on the Issue; everything else is another lane's claim. release, push,
 # and land act only on your own lane unless --yes records the maintainer's
 # approval.
+#
+# takeover moves an existing lane to the caller and leaves its branch, commits,
+# and Pull Request alone. It removes the owner marker, which fences the
+# previous owner (its token stops matching, so its push, land, and release are
+# refused), then records the caller under a fresh token. Removing the marker
+# first means a second takeover or a release racing this one fails on the
+# marker it no longer finds, and an interrupted takeover leaves a lane without
+# an owner, which takeover accepts again. It needs no approval when
+# $LANE_TOKEN owns the lane, or when the lane's worktree is on this machine
+# and no file in it changed for ISSUE_LANE_STALL_MINUTES (default 30); any
+# other takeover needs --yes. The new owner continues in that worktree,
+# uncommitted work included.
 #
 # capacity counts live lanes repository-wide against the lane limit
 # (ISSUE_LANE_LIMIT, default 3): open Pull Requests from claim branches plus
@@ -56,14 +68,17 @@
 #   bash issue-lane.sh capacity --self-test
 #   bash issue-lane.sh check <issue> [--json]
 #   LANE_AGENT=<name> bash issue-lane.sh claim <issue> [--dry-run]
+#   LANE_AGENT=<name> bash issue-lane.sh takeover <issue> [--dry-run] [--yes]
 #   bash issue-lane.sh release <issue> [--yes]
 #   bash issue-lane.sh push <issue> [--rebased] [--yes]
 #   bash issue-lane.sh land <issue> --pr <number> [--head <sha>] [--timeout-min <n>]
 #       [--accept-failed <check>]... [--yes]
-# Pass LANE_TOKEN=<token printed by claim> to check, release, push, and land.
+# Pass LANE_TOKEN=<token printed by claim or takeover> to check, release, push,
+# and land.
 #
 # Exit codes: 0 unclaimed, mine, done, capacity left, or merged and confirmed;
-# 3 claimed by another lane, not your lane (push, land), or no lane capacity
+# 3 claimed by another lane, not your lane (push, land), a lane that may not be
+# taken over without approval or that another takeover won, or no lane capacity
 # left; 4 head moved (review and
 # land the new head); 5 merge blocked (failed check, conflict, or behind main);
 # 6 not mergeable yet when the watch timed out (land again to keep watching);
@@ -77,6 +92,7 @@ set -euo pipefail
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 STALE_HOURS=6
+STALL_MINUTES="${ISSUE_LANE_STALL_MINUTES:-30}"
 LANE_LIMIT="${ISSUE_LANE_LIMIT:-3}"
 POLL_SECONDS="${ISSUE_LANE_POLL_SECONDS:-60}"
 
@@ -99,7 +115,7 @@ require_tools() {
 
 command_name="${1:-}"
 case "$command_name" in
-  capacity | check | claim | release | push | land) ;;
+  capacity | check | claim | takeover | release | push | land) ;;
   -h | --help | "") usage 0 ;;
   *) usage ;;
 esac
@@ -156,9 +172,11 @@ esac
 [ "$command_name" = capacity ] || [ "$self_test" = false ] || fail "--self-test belongs to capacity"
 [ "$command_name" = push ] || [ "$rebased" = false ] || fail "--rebased belongs to push"
 printf '%s' "$LANE_LIMIT" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_LIMIT must be a positive whole number"
+printf '%s' "$STALL_MINUTES" | grep -Eq '^[1-9][0-9]*$' || fail "ISSUE_LANE_STALL_MINUTES must be a positive whole number"
 lane_agent="${LANE_AGENT:-}"
 lane_token="${LANE_TOKEN:-}"
-[ "$command_name" != claim ] || printf '%s' "$lane_agent" | grep -Eq '^[a-z0-9][a-z0-9-]{0,31}$' \
+{ [ "$command_name" != claim ] && [ "$command_name" != takeover ]; } \
+  || printf '%s' "$lane_agent" | grep -Eq '^[a-z0-9][a-z0-9-]{0,31}$' \
   || fail "set LANE_AGENT to a short lowercase agent name (for example claude or codex)"
 
 # Claim branches are <type>/<issue> or <type>/<issue>-<slug>.
@@ -360,6 +378,38 @@ idle_hours() {
   if [ -n "$newest" ]; then hours_since "$newest"; else printf 'null'; fi
 }
 
+# The lane worktree on this machine: {path, quiet, stall_minutes} for the
+# worktree that has one of the claim branches in $1 checked out, or null.
+# quiet means no working file changed within STALL_MINUTES. Git metadata is
+# left out, so an observer running git there does not make the lane look
+# alive. A scan that fails reads as not quiet.
+local_lane_json() {
+  local line root="" path="" branch rel recent
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        path="${line#worktree }"
+        [ -n "$root" ] || root="$path"
+        ;;
+      "branch refs/heads/"*)
+        branch="${line#branch refs/heads/}"
+        printf '%s' "$1" | jq -e --arg b "$branch" 'index($b) != null' >/dev/null || continue
+        recent="$(find "$path" -name .git -prune -o -type f -mmin "-${STALL_MINUTES}" -print -quit 2>/dev/null)" \
+          || recent=unreadable
+        case "$path" in
+          "$root") rel=. ;;
+          "$root"/*) rel="${path#"$root"/}" ;;
+          *) rel="$path" ;;
+        esac
+        jq -cn --arg path "$rel" --argjson quiet "$([ -z "$recent" ] && echo true || echo false)" \
+          --argjson minutes "$STALL_MINUTES" '{path: $path, quiet: $quiet, stall_minutes: $minutes}'
+        return
+        ;;
+    esac
+  done < <(git worktree list --porcelain 2>/dev/null)
+  printf 'null'
+}
+
 # Every branch named <anything>/<issue> or <anything>/<issue>-<slug>.
 claim_branches_json() {
   gh api "repos/${repo}/git/matching-refs/heads/" --paginate \
@@ -399,8 +449,9 @@ assignment_json() {
 }
 
 report_json() {
-  local branches prs assignment marker owner mine idle verdict hint
+  local branches prs assignment marker owner mine idle verdict hint local_lane
   branches="$(claim_branches_json)"
+  local_lane="$(local_lane_json "$branches")"
   prs="$(open_prs_json "$branches")"
   assignment="$(assignment_json)"
   marker="$(claim_marker_json)" || fail "could not read the lane owner of #${issue}; refusing to judge the claim"
@@ -429,10 +480,12 @@ report_json() {
       idle="$(idle_hours "$marker")"
       if [ "$(printf '%s' "$marker" | jq '.count // 0')" -gt 1 ]; then
         hint="several lane owner markers on the Issue; the oldest counts; ask the maintainer to clean up"
+      elif [ "$(printf '%s' "$local_lane" | jq '.quiet // false')" = true ]; then
+        hint="stalled on this machine: no file in $(printf '%s' "$local_lane" | jq -r .path) changed for ${STALL_MINUTES}m; take it over with takeover ${issue}"
       elif [ "$marker" = null ]; then
-        hint="claim carries no lane token (made by hand or before tokens); the same login does not make it yours; ask the maintainer before taking over"
+        hint="claim carries no lane token (made by hand or before tokens); the same login does not make it yours; ask the maintainer, then takeover ${issue} --yes"
       elif [ "$idle" != null ] && [ "$idle" -ge "$STALE_HOURS" ]; then
-        hint="no activity for ${idle}h; possibly stale; ask the maintainer before taking over"
+        hint="no activity for ${idle}h; possibly stale; ask the maintainer, then takeover ${issue} --yes"
       fi
     fi
   fi
@@ -441,10 +494,10 @@ report_json() {
     --arg repo "$repo" --argjson issue "$issue" --arg title "$issue_title" --arg state "$issue_state" \
     --arg lane_branch "$lane_branch" --argjson branches "$branches" --argjson prs "$prs" \
     --argjson assignment "$assignment" --argjson owner "$owner" --argjson idle "$idle" --argjson mine "$mine" \
-    --arg verdict "$verdict" --arg hint "$hint" \
+    --argjson local_lane "$local_lane" --arg verdict "$verdict" --arg hint "$hint" \
     '{repo: $repo, issue: $issue, title: $title, state: $state, lane_branch: $lane_branch,
       claim_branches: $branches, open_prs: $prs, assignment: $assignment,
-      owner: $owner, mine: $mine, idle_hours: $idle,
+      owner: $owner, mine: $mine, idle_hours: $idle, local_worktree: $local_lane,
       verdict: $verdict, hint: (if $hint == "" then null else $hint end)}'
 }
 
@@ -461,6 +514,7 @@ print_report() {
     "open PRs: \(if (.open_prs | length) == 0 then "none" else ([.open_prs[] | "#\(.number) \(if .isDraft then "draft" else "ready" end) \(.headRefName) by \(.author.login) updated \(.updatedAt)"] | join("; ")) end)",
     "assignees: \(if (.assignment.assignees | length) == 0 then "none" else (.assignment.assignees | join(", ")) + " (assigned \(.assignment.last_assigned_at // "unknown"), \(.assignment.age_hours // "?")h ago)" end)",
     "lane owner: \(if .owner then "\(.owner.agent) (claimed \(.owner.claimed_at))" else "unknown" end)\(if .idle_hours != null then ", idle \(.idle_hours)h" else "" end)",
+    "local worktree: \(if .local_worktree then "\(.local_worktree.path), \(if .local_worktree.quiet then "no file changed for \(.local_worktree.stall_minutes)m" else "changed within \(.local_worktree.stall_minutes)m" end)" else "none on this machine" end)",
     "verdict: \(.verdict)\(if .hint then " — " + .hint else "" end)"'
 }
 
@@ -735,6 +789,76 @@ case "$command_name" in
       --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       '{repo: $repo, issue: $issue, branch: $branch, base_sha: $base, assignee: $assignee,
         agent: $agent, token: $token, claimed_at: $at}'
+    ;;
+
+  takeover)
+    report="$(report_json)"
+    [ "$issue_state" = OPEN ] || fail "#${issue} is ${issue_state}; there is no lane to take over"
+    takeover_branch="$(printf '%s' "$report" | jq -r --arg b "$lane_branch" \
+      '.claim_branches | if index($b) != null then $b else (first // empty) end')"
+    [ -n "$takeover_branch" ] || fail "#${issue} has no claim branch; claim it instead"
+    if [ "$(printf '%s' "$report" | jq .mine)" = true ]; then
+      basis=token
+    elif [ "$confirm" = true ]; then
+      basis=approved
+    elif [ "$(printf '%s' "$report" | jq '.local_worktree.quiet // false')" = true ]; then
+      basis=local-stall
+    else
+      print_report "$report" >&2
+      printf 'issue-lane: refusing to take over #%s: the lane is not yours and is not stalled on this machine; pass --yes with the maintainer'"'"'s approval\n' "$issue" >&2
+      exit 3
+    fi
+    old_marker_id="$(printf '%s' "$report" | jq -r '.owner.marker_id // empty')"
+    old_agent="$(printf '%s' "$report" | jq -r '.owner.agent // "unknown"')"
+    printf 'takeover plan: lane %s of #%s from %s to %s (%s)\n' \
+      "$takeover_branch" "$issue" "$old_agent" "$lane_agent" "$basis" >&2
+    if [ "$dry_run" = true ]; then
+      printf 'dry run; no GitHub mutation.\n' >&2
+      exit 0
+    fi
+    # Remove the marker read above before recording the new owner. It is the
+    # fence: the previous owner stops matching, and a takeover or release
+    # racing this one fails here. Interrupted after this point, the lane has
+    # no owner and takeover accepts it again.
+    if [ -n "$old_marker_id" ]; then
+      gh api -X DELETE "repos/${repo}/issues/comments/${old_marker_id}" >/dev/null \
+        || fail "could not remove lane owner marker ${old_marker_id}; another takeover or release may have run; check again"
+    fi
+    token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    token_hash="$(printf '%s' "$token" | sha256_short)"
+    marker_body="Lane taken over by \`${lane_agent}\` on \`${takeover_branch}\` (previous owner \`${old_agent}\`).
+
+<!-- issue-lane-claim agent=${lane_agent} token-sha256=${token_hash} -->"
+    gh issue comment "$issue" --body "$marker_body" >/dev/null \
+      || printf 'issue-lane: recording the lane owner on #%s reported an error; confirming\n' "$issue" >&2
+    # The oldest marker owns the lane. Takeovers of a lane without an owner
+    # can both record one; the later one withdraws.
+    lane_token="$token"
+    marker="$(claim_marker_json)" || {
+      printf 'issue-lane: lane owner of #%s unverified; check with LANE_TOKEN=%s\n' "$issue" "$token" >&2
+      exit 1
+    }
+    if ! token_matches "$marker"; then
+      own_id="$(gh api "repos/${repo}/issues/${issue}/comments" --paginate \
+        | jq -rs --arg h "$token_hash" '.[][] | select(.body | contains("token-sha256=" + $h + " ")) | .id')" || own_id=""
+      for id in $own_id; do
+        gh api -X DELETE "repos/${repo}/issues/comments/${id}" >/dev/null || true
+      done
+      [ "$marker" != null ] || fail "could not record the lane owner on #${issue}; the lane has no owner, run takeover again"
+      printf 'issue-lane: another takeover of #%s won (owner: %s)\n' "$issue" "$(printf '%s' "$marker" | jq -r .agent)" >&2
+      exit 3
+    fi
+    # The assignment is a visible hint only; never lose the token over it.
+    gh issue edit "$issue" --add-assignee "@me" >/dev/null \
+      || printf 'issue-lane: could not assign %s to #%s; the takeover stands\n' "$login" "$issue" >&2
+    printf 'issue-lane: keep the token in your own session and pass LANE_TOKEN=<token> to check, release, push, and land.\n' >&2
+    printf 'issue-lane: never write it on GitHub, in the repository, or in a path another agent reads.\n' >&2
+    jq -n --arg repo "$repo" --argjson issue "$issue" --arg branch "$takeover_branch" \
+      --arg previous "$old_agent" --arg agent "$lane_agent" --arg basis "$basis" --arg token "$token" \
+      --argjson worktree "$(printf '%s' "$report" | jq '.local_worktree.path // null')" \
+      --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{repo: $repo, issue: $issue, branch: $branch, previous_agent: $previous, agent: $agent,
+        basis: $basis, worktree: $worktree, token: $token, taken_over_at: $at}'
     ;;
 
   release)

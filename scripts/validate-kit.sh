@@ -175,6 +175,9 @@ if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test:
 # Self-test: issue-lane.sh against a fake gh. Each `gh pr view` serves the
 # next Pull Request snapshot (the last one repeats); mutations are recorded.
 # Issue #7 has the claim branch feat/7 and one owner marker (comments).
+# Comments are stateful: deleting one removes it, `gh issue comment` appends
+# id 99 (after the markers in rival, when that file exists), and marker_gone
+# makes a marker delete fail as if another caller had removed it.
 land="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-land.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$fr" "$push" "$land"' EXIT
 mkdir -p "$land/bin"
 cat > "$land/bin/gh" <<'FAKE'
@@ -192,6 +195,14 @@ case "$*" in
   "pr list"*) echo '[]' ;;
   "api repos/o/r/commits/feat/7 --jq .commit.committer.date") echo 2026-01-01T00:00:00Z ;;
   "api graphql"*) case "$*" in *--input*) cat >> "$FAKE/graphql_in" ;; esac; head -n 1 "$FAKE/seq"; [ "$(wc -l < "$FAKE/seq")" -gt 1 ] && sed -i.bak 1d "$FAKE/seq"; true ;;
+  "api -X DELETE repos/o/r/issues/comments/"*) [ -f "$FAKE/marker_gone" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    last="${*: -1}"; jq -c --argjson id "${last##*/}" 'map(select(.id != $id))' "$FAKE/comments" > "$FAKE/comments.new" && mv "$FAKE/comments.new" "$FAKE/comments"
+    echo "$*" >> "$FAKE/calls" ;;
+  "issue comment 7 --body "*) echo "issue comment 7" >> "$FAKE/calls"
+    jq -c --arg body "$5" --argjson rival "$(cat "$FAKE/rival" 2>/dev/null || echo '[]')" \
+      '. + $rival + [{id: 99, created_at: "2026-03-01T00:00:00Z", user: {login: "me"}, body: $body}]' "$FAKE/comments" > "$FAKE/comments.new" \
+      && mv "$FAKE/comments.new" "$FAKE/comments" ;;
+  "issue edit 7 --add-assignee"*) echo "$*" >> "$FAKE/calls" ;;
   "pr merge"* | "api -X DELETE"* | "api -X PUT"* | "api -X POST"*) echo "$*" >> "$FAKE/calls" ;;
   "api repos/o/r --jq .node_id") echo R_1 ;;
   "api repos/o/r/git/commits/"*) printf '{"tree":{"sha":"%s"}}\n' "$(cat "$FAKE/tree")" ;;
@@ -401,4 +412,50 @@ jq -se --arg t "$T" --arg c "$copy" 'map(select(.query | contains("updateRefs"))
 [ "$(grep -c 'api -X DELETE repos/o/r/git/refs/heads/lane-publish/7/rebase' "$land/calls")" = 2 ] \
   || fail "self-test: push --rebased did not clear the scratch branch before and after"
 [ "$(rg rev-parse HEAD)" = "$copy" ] || fail "self-test: push --rebased left HEAD off the new Pull Request head"
+
+# Self-test: takeover moves the lane to the caller and touches neither the
+# branch nor a Pull Request. The lane worktree is $land/repo (feat/7 is
+# checked out there); its files are fresh until age_lane backdates them.
+marker7() {
+  printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","user":{"login":"me"},"body":"%s"}]\n' \
+    '<!-- issue-lane-claim agent=a token-sha256=a5d72c097890699d -->' > "$land/comments"
+  : > "$land/calls"
+}
+age_lane() { find "$land/repo" -name .git -prune -o -type f -exec touch -t 202001010000 {} +; }
+taken() { printf '%s\n' "$out" | sed -n '/^{/,$p' | jq -r "$1"; }
+owners() { jq -r '[.[].body | capture("agent=(?<a>[a-z0-9-]+)").a] | join(",")' "$land/comments"; }
+marker7
+lane_agent=b lane_token=wrong lane 3 "$land/repo" takeover 7
+lane_agent=b lane_token=wrong lane 3 "$land" takeover 7
+[ ! -s "$land/calls" ] && [ "$(owners)" = a ] \
+  || fail "self-test: takeover without the token, a stalled local lane, or --yes changed the lane: $(cat "$land/calls")"
+lane_agent=b lane_token=wrong lane 0 "$land" takeover 7 --yes
+[ "$(taken .basis)" = approved ] && [ "$(owners)" = b ] || fail "self-test: takeover --yes did not move the lane: $out"
+marker7; age_lane
+lane_agent=b lane_token=wrong lane 0 "$land/repo" takeover 7
+[ "$(taken .basis)" = local-stall ] && [ "$(taken .worktree)" = . ] && [ "$(owners)" = b ] \
+  || fail "self-test: takeover of a lane stalled on this machine did not move it: $out"
+if grep -Eq 'git/refs|pulls|pr merge' "$land/calls"; then fail "self-test: takeover touched the branch or a Pull Request: $(cat "$land/calls")"; fi
+new_token="$(taken .token)"
+lane_token="$new_token" lane 0 "$land" check 7
+lane 3 "$land" push 7
+marker7
+lane_agent=b lane 0 "$land" takeover 7
+[ "$(taken .basis)" = token ] || fail "self-test: takeover with the lane token is not a rotation: $out"
+lane 3 "$land" check 7
+# A marker removed by a concurrent takeover or release stops this one.
+marker7; touch "$land/marker_gone"
+lane_agent=b lane_token=wrong lane 1 "$land/repo" takeover 7
+if grep -q 'issue comment' "$land/calls"; then fail "self-test: takeover recorded an owner after losing the marker"; fi
+rm "$land/marker_gone"
+# A lane without an owner (an interrupted takeover) is taken over again; when
+# two callers record an owner, the older marker wins and the other withdraws.
+echo '[]' > "$land/comments"
+lane_agent=b lane_token=wrong lane 0 "$land/repo" takeover 7
+[ "$(owners)" = b ] || fail "self-test: takeover did not adopt a lane without an owner: $out"
+echo '[]' > "$land/comments"
+echo '[{"id":50,"created_at":"2026-02-01T00:00:00Z","user":{"login":"me"},"body":"<!-- issue-lane-claim agent=rival token-sha256=0000000000000000 -->"}]' > "$land/rival"
+lane_agent=b lane_token=wrong lane 3 "$land/repo" takeover 7
+[ "$(owners)" = rival ] || fail "self-test: the later of two takeovers did not withdraw: $(cat "$land/comments")"
+rm "$land/rival"
 printf 'agent-kit validation passed\n'

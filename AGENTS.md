@@ -102,9 +102,12 @@ exists:
 An assignment older than six hours with neither branch nor Pull Request is an
 ownership hint, not a veto: report it and ask the maintainer before claiming.
 A claim is stale once its Issue is closed or its Pull Request has merged; its
-owner or the maintainer removes it. Any other takeover first preserves the
-existing branch, Pull Request, and evidence and requires the maintainer's
-confirmation, unless the lead of the same parallel run owns the stalled lane.
+owner or the maintainer removes it. A live lane changes owner only through
+`issue-lane.sh takeover <issue>`, which keeps the branch, Pull Request, and
+commits and fences the previous owner's token. It needs no confirmation when
+the caller holds the lane's token (the lead of the same parallel run), or when
+the lane's worktree is on this machine and no file in it changed for 30
+minutes. Any other takeover requires the maintainer's confirmation (`--yes`).
 
 A lane claims before it implements, under Publish or Land authority or with an
 explicit claim authorization under Implement, using
