@@ -1,0 +1,5 @@
+# Canonical source: Sannrox/agent-kit skills/ci-audit.
+interface:
+  display_name: "CI Audit"
+  short_description: "Measure CI jobs, keep what catches failures"
+  default_prompt: "Use $ci-audit to report what each CI job costs and catches, or to gate this new job."

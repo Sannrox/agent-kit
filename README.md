@@ -21,6 +21,7 @@ hand-copying long `SKILL.md` files.
 | `test-audit` | opt-in | Gate every new or changed test and prune low-value ones; `deliver-ready-issue` and `verify-change` apply its gate |
 | `validate-behavior` | opt-in | Source-blind validation of a running app, CLI or API against a behavior contract; `deliver-ready-issue` runs it for observable acceptance criteria |
 | `improve-performance` | opt-in | Measured performance work: count the work, delete waste, cache last |
+| `ci-audit` | opt-in | Report what each CI job costs and catches from run history (`scripts/ci-report.sh`); gate every new job |
 | `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 
 [Skill flows](docs/skill-flows.md) diagrams what each skill decides, where it
