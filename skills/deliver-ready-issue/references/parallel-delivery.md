@@ -96,6 +96,8 @@ Lane brief
 - on a shared machine, fetch --prune, worktree add/remove, branch delete, and
   merge are lead-only; commit and publish only your own branch from your own
   worktree. Never enter the primary checkout or another lane's worktree.
+- time bound: <minutes>. Run long commands with a timeout, so a hang ends
+  as a failure you report. A lane silent past the bound is taken over.
 - stop and report instead of continuing when: a dependency turns out to be
   open, the Issue needs a split, you need a reserved surface, verification
   needs a service that is unavailable, or the ceiling would be exceeded.
@@ -109,13 +111,37 @@ Lane brief
    accepting any later report.
 2. Read worker reports as evidence, not as completion. Inspect the diff and the
    verification output of every lane before publishing or landing it.
-3. Preserve a stalled lane's branch, Pull Request, and evidence before taking it
-   over. Continue on the same claim branch; do not open a second lane for the
-   same Issue. Another machine's lane looks the same from GitHub, so a lane the
-   lead did not claim, or whose token it does not hold, is not the lead's to
-   take over without the maintainer; `push` and `land` refuse it without
-   `--yes`.
-4. A blocked lane is reported and its claim kept until the maintainer decides.
+3. Watch every open lane until it lands, is blocked, or is handed over. A
+   lane that hangs sends no report, so never wait for one alone: check each
+   lane at least every ten minutes and record the time and what changed in
+   the ledger.
+
+   ```sh
+   LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" check <issue>
+   ```
+
+   Do not end your turn while a lane you started is open, unless the
+   maintainer must answer. When you wait on a notification, also schedule a
+   check that fires without one.
+4. A lane is stalled when `check` reports no file change in its worktree for
+   the stall threshold (30 minutes, `ISSUE_LANE_STALL_MINUTES`) and its Pull
+   Request has no checks still running. A lane waiting on checks is not
+   stalled. Take a stalled lane over in place:
+
+   ```sh
+   LANE_TOKEN=<token> LANE_AGENT=<agent> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" takeover <issue>
+   ```
+
+   The lead holds the token of every lane it claimed, so this needs no
+   approval. It keeps the branch, Pull Request, and commits, fences the worker
+   (its `push` and `land` are refused from then on), and prints a new token.
+   Continue in the same worktree on the same claim branch, uncommitted work
+   included, or hand the lane and the new token to a new worker. Never
+   release and claim again, and never open a second lane for the same Issue.
+   A lane the lead did not claim is taken over without the maintainer only
+   when `check` reports it stalled on this machine; any other lane needs the
+   maintainer (`takeover <issue> --yes`).
+5. A blocked lane is reported and its claim kept until the maintainer decides.
    Never repurpose its branch or worktree for another Issue. A lane abandoned
    before any commit is released with
    `LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`.

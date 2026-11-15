@@ -140,7 +140,10 @@ flowchart TD
     read --> ok{"Open, dependencies closed,<br/>one Pull Request in size,<br/>testable acceptance criteria?"}
     ok -->|"no"| notReady(["Stop: report the smallest action<br/>that would unblock it"])
     ok -->|"yes"| claim{"issue-lane.sh check"}
-    claim -->|"claimed by another lane"| foreign(["Stop: not yours, unless you<br/>direct the takeover"])
+    claim -->|"claimed by another lane"| stalled{"Stalled on this machine: no file<br/>changed for 30 minutes, no checks running?"}
+    stalled -->|"no"| foreign(["Stop: not yours, unless you<br/>direct the takeover"])
+    stalled -->|"yes"| takeover["issue-lane.sh takeover: same branch and worktree,<br/>previous owner's token fenced"]
+    takeover --> code
     claim -->|"old assignment, no branch"| ask(["Stop: asks you before claiming"])
     claim -->|"mine"| worktree
     claim -->|"free"| ceiling{"Ceiling is<br/>Implement only?"}
