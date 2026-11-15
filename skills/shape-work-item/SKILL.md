@@ -41,9 +41,26 @@ explicitly authorizes publishing to GitHub.
    Write acceptance evidence as the observable behavior and the one boundary
    that proves it. Do not list tests: which tests exist is decided at delivery
    by the `test-audit` authoring gate.
-5. Recommend labels (`type:*`, `area:*`, `status:ready` when ready). Do not
-   invent priority, assignment, or sprint.
-6. Milestones are release versions. A milestone is titled with the exact
+5. Settle open questions. A question left for the maintainer keeps the Issue
+   in `status:triage`.
+   - A fact the code, docs, or Issue history can answer: look it up.
+   - A routine or reversible choice: decide it and write it into the body as
+     a decision marked `Assumed:`, so review can overturn it. It does not
+     block `status:ready`.
+   - A choice that step 3 routes to a Design Discussion: draft the decision
+     for the option you recommend (context, decision, consequences, rejected
+     alternatives; the ADR form when `docs/decisions/` exists). The
+     maintainer accepts or rejects a text, not a list of options.
+   - Whether the outcome is wanted is the maintainer's call, and the default
+     is no. When no report, request, incident, or blocked Issue shows the
+     need, recommend not filing and name the evidence that would change
+     that. Do not file the question.
+   - The question of a `research` Issue is its outcome, not a blocker. The
+     Issue is ready once the question, the time box, and the form of the
+     decision are named.
+6. Recommend labels (`type:*`, `area:*`, `status:ready` when no maintainer
+   decision remains). Do not invent priority, assignment, or sprint.
+7. Milestones are release versions. A milestone is titled with the exact
    version it ships in (for example `0.9.0`) and describes its theme in the
    milestone description, so anyone waiting on an Issue can see which release
    carries it. Never create a thematic or named milestone. Put an Issue in a
@@ -56,6 +73,7 @@ explicitly authorizes publishing to GitHub.
 2. possible duplicates;
 3. issue title and body ready for GitHub;
 4. recommended labels;
-5. unresolved questions blocking `status:ready`.
+5. maintainer decisions still blocking `status:ready`, each with its draft
+   decision, or `none`.
 
 Do not publish without explicit authorization.
