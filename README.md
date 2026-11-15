@@ -61,7 +61,7 @@ Stubs are generated from `templates/stub-SKILL.md`; never edit them by hand.
 
 ```text
 AGENTS.md                      # repo policy; links Sannrox/agent-kit; ## Agent skill profile
-CLAUDE.md                      # points to AGENTS.md
+CLAUDE.md -> AGENTS.md         # symlink so Claude Code loads the policy
 .claude/skills -> ../.agents/skills # symlink so Claude Code finds the stubs
 .agents/skills/<shared>/SKILL.md   # generated stubs, nothing else
 .agents/skills/<local>/        # repo-only skills, full content, stay local
