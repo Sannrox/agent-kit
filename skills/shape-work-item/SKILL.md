@@ -49,6 +49,11 @@ explicitly authorizes publishing to GitHub.
    it and saw it), `read from source` (cite `path:line` at a commit), or
    `not verified`. Write `not verified` instead of a guess. A `bug` whose
    problem is `not verified` stays in `status:triage`.
+   Give the body a `## GitHub dependencies` section that is exactly `none` or
+   one reference per line (`- #12`, `- <owner>/<repo>#34`). It is the only
+   section `advance-issue-frontier` evaluates; any other wording there leaves
+   the Issue to judgment on every run. Boundaries, gates, and related work go
+   in another section.
 5. Settle open questions. A question left for the maintainer keeps the Issue
    in `status:triage`.
    - A fact the code, docs, or Issue history can answer: look it up.
