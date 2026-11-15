@@ -48,9 +48,10 @@ flowchart TD
     merged -->|"when you ask for a release"| release[["prepare-release"]]
 ```
 
-Five skills stand apart from the Issue flow and run when you call them:
-`improve-performance`, `ci-audit`, `ui-e2e`, `technical-documentation`, and
-`refactor-docs` (which loads `technical-documentation` first).
+Six skills stand apart from the Issue flow and run when you call them:
+`improve-performance`, `ci-audit`, `ui-e2e`, `api-e2e`,
+`technical-documentation`, and `refactor-docs` (which loads
+`technical-documentation` first).
 
 ## shape-work-item
 
@@ -529,6 +530,30 @@ flowchart TD
     live --> gate{"Visual change with screenshots<br/>in the Pull Request?"}
     gate -->|"upload failed"| blocker(["Stop: delivery blocker,<br/>unless you waive it"])
     gate -->|"yes, or not a visual change"| out(["Report: stages run and skipped, picks,<br/>test results, capture paths, untested states"])
+```
+
+## api-e2e
+
+Call it for a change to an interface the repository serves. It picks stages
+by what the change touches, and a breaking change without a new version stops
+for your decision.
+
+```mermaid
+flowchart TD
+    start(["A change to a served interface"]) --> wire{"Changes what<br/>crosses the wire?"}
+    wire -->|"yes"| contract["Stage 1: change the contract source, regenerate,<br/>run the drift check, classify the change"]
+    wire -->|"no"| tests
+    contract --> kind{"Additive or<br/>breaking?"}
+    kind -->|"additive"| replay["Prove both directions: previous requests on the new server,<br/>new requests on the previous server"]
+    kind -->|"breaking"| version{"Ships as a new version<br/>beside the old one?"}
+    version -->|"yes"| replay
+    version -->|"no"| decide(["Stop: the owner decides"])
+    decide -->|"you record a decision"| replay
+    replay --> tests["Stage 2: boundary tests against the real listener,<br/>real client, interface rules as assertions"]
+    tests --> durable{"Touches durable state, idempotency, background work,<br/>startup, shutdown, or health?"}
+    durable -->|"yes"| crash["Stage 3: kill with a write in flight and restart,<br/>readiness, version overlap, takeover and fencing<br/>where an instance owns work exclusively"]
+    durable -->|"no"| out
+    crash --> out(["Report: stages run and skipped, drift result,<br/>version pairs proven, test results, what mocks cannot prove"])
 ```
 
 ## technical-documentation
