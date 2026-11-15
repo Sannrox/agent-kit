@@ -64,6 +64,14 @@ bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 touch "$tmp/.agents/project.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: leftover .agents/project.md was not detected"; fi
 rm "$tmp/.agents/project.md"
+# CLAUDE.md as a symlink to an AGENTS.md that never names itself must pass;
+# a symlink to any other file must not.
+grep -Fq AGENTS.md "$tmp/AGENTS.md" && fail "self-test: the fixture AGENTS.md names itself, so the symlink case proves nothing"
+ln -sf AGENTS.md "$tmp/CLAUDE.md"
+bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null || fail "self-test: CLAUDE.md as a symlink to AGENTS.md was rejected"
+printf 'See AGENTS.md\n' > "$tmp/other.md"; ln -sf other.md "$tmp/CLAUDE.md"
+if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: CLAUDE.md as a symlink to another file was accepted"; fi
+rm "$tmp/CLAUDE.md" "$tmp/other.md"; printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"
 rm "$tmp/.claude/skills"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null || fail "self-test: a consumer without the .claude/skills link must still pass"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null

@@ -16,7 +16,8 @@
 #   - .claude/skills, when present, is a symlink to ../.agents/skills, because
 #     Claude Code discovers skills only under .claude/skills;
 #   - AGENTS.md references Sannrox/agent-kit and keeps the parallel-lane policy;
-#     CLAUDE.md points to AGENTS.md; .gitignore ignores /.worktrees/.
+#     CLAUDE.md is a symlink to AGENTS.md (a regular file that names AGENTS.md
+#     is still accepted); .gitignore ignores /.worktrees/.
 # --render rewrites the default stubs, existing opt-in stubs and vendored scripts,
 # and creates the .claude/skills link when nothing is at that path.
 set -euo pipefail
@@ -85,7 +86,13 @@ done < <(grep '^### ' "${kit}/templates/agent-skill-profile.md")
 grep -Fq "Sannrox/agent-kit" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not reference Sannrox/agent-kit"
 grep -Fqx "## Parallel delivery lanes" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Parallel delivery lanes"
 grep -Eq 'issue-lane\.sh"?[[:space:]]+claim' "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not name issue-lane.sh claim"
-grep -Fq "AGENTS.md" "${root}/CLAUDE.md" 2>/dev/null || fail "CLAUDE.md does not point to AGENTS.md"
+# CLAUDE.md is a symlink to AGENTS.md, so Claude Code loads the policy itself.
+# A regular file that names AGENTS.md is still accepted.
+if [ -L "${root}/CLAUDE.md" ]; then
+  [ "$(readlink "${root}/CLAUDE.md")" = "AGENTS.md" ] || fail "CLAUDE.md must be a symlink to AGENTS.md"
+else
+  grep -Fq "AGENTS.md" "${root}/CLAUDE.md" 2>/dev/null || fail "CLAUDE.md does not point to AGENTS.md (make it a symlink to AGENTS.md)"
+fi
 grep -Fq "/.worktrees/" "${root}/.gitignore" 2>/dev/null || fail ".gitignore does not ignore /.worktrees/"
 
 if [ "$errors" -gt 0 ]; then
