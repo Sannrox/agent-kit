@@ -69,7 +69,8 @@ Use the repository's existing browser test lane. Do not add a second runner.
 
 Ask of every test: could it pass while the UI is still broken for a user? A
 mock can return a shape the real backend never sends. Cover that gap with a
-contract fixture shared with the backend, or with one live journey (stage 5).
+contract fixture shared with the backend (`api-e2e` stage 1 says how), or
+with one live journey (stage 5).
 
 **Done:** each changed behavior has a named scenario that passes, or a kept
 failure that names the unmet assertion.
