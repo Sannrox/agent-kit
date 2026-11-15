@@ -23,6 +23,9 @@ hand-copying long `SKILL.md` files.
 | `improve-performance` | opt-in | Measured performance work: count the work, delete waste, cache last |
 | `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 
+[Skill flows](docs/skill-flows.md) diagrams what each skill decides, where it
+stops, and which skills it calls.
+
 Shared scripts: `scripts/validate-workflow-skills.sh` is vendored into
 consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
 canonical publisher for GitHub-signed commits. Lanes run it from the kit

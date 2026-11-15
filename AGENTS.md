@@ -15,7 +15,9 @@ in `templates/default-skills.txt` and `templates/vendored-scripts.txt`.
 commits; lanes run it from the kit through `issue-lane.sh push`. `scripts/validate-kit.sh` is this repository's skill gate.
 The kit version lives in `VERSION`. Signed `v*` releases are documented in
 `RELEASING.md`. Read `README.md` before changing the stub
-contract.
+contract. `docs/skill-flows.md` diagrams each skill's decisions and stop
+points; a change to a skill's procedure updates its diagram in the same pull
+request.
 
 ## Build, Test, and Development Commands
 
