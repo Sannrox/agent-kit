@@ -142,7 +142,10 @@ mark the Issue unless documented maintainer policy requires it.
 1. Run `assess-change-impact` against the Issue and affected paths.
 2. Translate the Issue acceptance criteria into code, test, documentation,
    migration, configuration, and security obligations.
-3. Implement one coherent outcome. Avoid opportunistic cleanup.
+3. Implement one coherent outcome. Avoid opportunistic cleanup. For a fix,
+   name the line where the fault shows before editing; a fix that cannot name
+   it rests on an unverified premise, so reproduce first. Before restoring a
+   path that was removed, read why it was removed (`git log -p -S <symbol>`).
 4. If the Issue cannot produce one reviewable Pull Request, stop and recommend
    a split. Do not create follow-up Issues without authorization.
 5. If the fix must also reach a maintenance line, note that in the bound

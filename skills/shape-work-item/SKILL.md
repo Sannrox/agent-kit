@@ -31,6 +31,10 @@ explicitly authorizes publishing to GitHub.
    under `## GitHub dependencies`. Route cross-boundary,
    public-contract, trust-model, or difficult-to-reverse choices to a Design
    Discussion before implementation.
+   One Issue carries one outcome that one Pull Request can deliver. When a
+   review or audit yields several findings, shape one Issue per finding. Group
+   findings only when they share a cause and one fix closes them all. Never
+   file a list of findings as one Issue.
 4. Draft with problem, observable outcome, non-goals, acceptance evidence,
    affected area (from `## Project Structure & Module Organization` in `AGENTS.md`), and
    compatibility/security risks. Omit hostnames, FQDNs, IP addresses, home
@@ -41,6 +45,10 @@ explicitly authorizes publishing to GitHub.
    Write acceptance evidence as the observable behavior and the one boundary
    that proves it. Do not list tests: which tests exist is decided at delivery
    by the `test-audit` authoring gate.
+   Say how each claim about current behavior is known: `reproduced` (you ran
+   it and saw it), `read from source` (cite `path:line` at a commit), or
+   `not verified`. Write `not verified` instead of a guess. A `bug` whose
+   problem is `not verified` stays in `status:triage`.
 5. Settle open questions. A question left for the maintainer keeps the Issue
    in `status:triage`.
    - A fact the code, docs, or Issue history can answer: look it up.
