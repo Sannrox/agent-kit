@@ -424,7 +424,7 @@ flowchart TD
     main --> bound["Bound the contents: base tag, commit, merged<br/>Pull Requests, the version milestone"]
     bound --> audit["Classify changes, check SemVer fit, audit<br/>versions, configuration, packaging, rollback"]
     audit --> verify[["verify-change"]]
-    verify --> notes["Draft release notes and the<br/>CHANGELOG.md section"]
+    verify --> notes["Draft release notes and the<br/>CHANGELOG.md section; contributor credit<br/>comes from generated notes"]
     notes --> go{"Checks pass, no blocker,<br/>upgrade and rollback explicit?"}
     go -->|"no-go"| nogo(["Stop: no-go report with blockers"])
     go -->|"go"| c1{"Ceiling"}
@@ -443,7 +443,7 @@ flowchart TD
     run -->|"no, workflow defect"| fixwf["Fix lands on main,<br/>rerun the same tag"]
     fixwf --> run
     run -->|"no, defect in tagged content"| newver(["Stop: needs a new pre-release<br/>or patch version"])
-    run -->|"yes"| published["Verify the published release: not a draft,<br/>body matches the changelog, artifacts attached"]
+    run -->|"yes"| published["Verify the published release: not a draft,<br/>body matches the changelog, artifacts attached.<br/>A missing artifact: gh release upload, notes untouched"]
     published --> final{"Final release with no open<br/>Issues in its milestone?"}
     final -->|"yes"| close["Close the version milestone"]
     final -->|"no"| report
