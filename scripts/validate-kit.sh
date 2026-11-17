@@ -65,6 +65,13 @@ mkdir -p "$tmp/.agents" "$tmp/scripts"
 printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"; printf '/.worktrees/\n' > "$tmp/.gitignore"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
+# #58: --render writes vendored scripts without changing the consumer's mode.
+vendored="$tmp/scripts/validate-workflow-skills.sh"
+[ ! -x "$vendored" ] || fail "self-test: --render created a vendored script with the executable bit"
+chmod +x "$vendored"; bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
+[ -x "$vendored" ] || fail "self-test: --render dropped the executable bit a consumer tracks"
+chmod -x "$vendored"; bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
+[ ! -x "$vendored" ] || fail "self-test: --render added the executable bit to a consumer's non-executable script"
 touch "$tmp/.agents/project.md"
 if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: leftover .agents/project.md was not detected"; fi
 rm "$tmp/.agents/project.md"
