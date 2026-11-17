@@ -30,7 +30,9 @@ request.
   release-script gate.
 
 GitHub Issues are the planning source of truth. Shared skills stay in
-`skills/`; this repository has no `.agents/skills/` stubs of its own. Never
+`skills/`. This repository uses its own canonical skills instead of stubs:
+`.agents/skills -> ../skills` and `.claude/skills -> ../.agents/skills`, the
+same chain consumers use. Never
 commit hostnames, home paths, secrets or private environment details.
 
 ## Agent delivery closeout (required)
