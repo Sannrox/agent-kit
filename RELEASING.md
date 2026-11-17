@@ -61,13 +61,13 @@ runs **main's** `release.yml`, never the copy at the tagged commit.
 `release.yml` refuses a tagged run that does not start from `main`. It then:
 
 - checks out the tag and fetches the annotated tag object
-- verifies the signed tag with main's `scripts/verify-release-tag.sh` and
+- verifies the signed tag with main's `scripts/release/verify-tag.sh` and
   main's allowed keys against the tagged commit's `VERSION`
 - requires the tagged commit to be on `main`
-- runs the release-script gate and the skill gate, packages
+- runs the release tests and the skill gate, packages
   the archive, and writes the manifest `git_sha` from that commit
-- writes an SBOM, attests provenance, drafts the GitHub Release with
-  `gh release create <tag> --verify-tag` from the matching CHANGELOG section,
+- writes an SBOM, attests provenance, drafts the GitHub Release through
+  `scripts/release/github-release.sh` from the matching CHANGELOG section,
   attaches a signed family release manifest (component, version, git SHA,
   archive digest, attestation URLs, gate flags), and publishes it last
 

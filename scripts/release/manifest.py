@@ -51,6 +51,23 @@ def gate_flags_from_labels(labels: list[str]) -> list[str]:
     return sorted(flags)
 
 
+def labels_in_range(merged: str, in_range: str) -> list[str]:
+    """Labels of merged pull requests whose merge commit is in the release range.
+
+    `merged` holds one `<merge-commit>\t<label>` line per label; `in_range`
+    holds the commits of the release range, one per line. A pull request
+    merged after the release commit, or before the previous final tag, is
+    outside the range and never contributes a gate flag.
+    """
+    commits = {line.strip() for line in in_range.splitlines() if line.strip()}
+    labels = set()
+    for line in merged.splitlines():
+        oid, sep, label = line.partition("\t")
+        if sep and oid in commits and label:
+            labels.add(label)
+    return sorted(labels)
+
+
 def binaries_from_dir(dist: pathlib.Path) -> list[dict[str, str]]:
     items = []
     for path in sorted(dist.iterdir()):
@@ -92,55 +109,19 @@ def build_manifest(
     }
 
 
-def self_test() -> None:
-    labels = gate_flags_from_labels(
-        ["risk:breaking", "area:ops", "GATE:mig", "risk:realm", "docs"]
-    )
-    assert labels == ["breaking", "migration", "realm"], labels
-    assert gate_flags_from_labels([]) == []
-    try:
-        build_manifest(
-            component="agent-kit",
-            version="0.1.0",
-            git_sha="deadbeef",
-            tag="v0.1.0",
-            dist=pathlib.Path("."),
-            images=[],
-            attestations=[],
-            gate_flags=[],
-        )
-    except SystemExit:
-        pass
-    else:
-        raise SystemExit("expected short git_sha to fail")
-    with __import__("tempfile").TemporaryDirectory() as tmp:
-        dist = pathlib.Path(tmp)
-        (dist / "agent-kit-0.1.0.tar.gz").write_bytes(b"kit")
-        (dist / "SHA256SUMS").write_text("skip\n")
-        (dist / "agent-kit-release.json").write_text("{}\n")
-        (dist / "agent-kit.cdx.json").write_text("{}\n")
-        manifest = build_manifest(
-            component="agent-kit",
-            version="0.1.0",
-            git_sha="a" * 40,
-            tag="v0.1.0",
-            dist=dist,
-            images=[],
-            attestations=["https://github.com/Sannrox/agent-kit/attestations/1"],
-            gate_flags=["breaking"],
-        )
-        assert manifest["schema"] == SCHEMA
-        assert manifest["images"] == []
-        assert len(manifest["binaries"]) == 1
-        assert manifest["binaries"][0]["name"] == "agent-kit-0.1.0.tar.gz"
-        assert manifest["binaries"][0]["digest"].startswith("sha256:")
-        assert "latest" not in json.dumps(manifest)
-    print("release-manifest self-test passed")
+
+def record_attestations(path: pathlib.Path, urls: list[str]) -> None:
+    """Set the manifest's attestation URLs before the manifest itself is attested."""
+    manifest = json.loads(path.read_text())
+    manifest["attestations"] = [url for url in urls if url]
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
 
 def main(argv: list[str]) -> None:
-    if argv == ["--self-test"]:
-        self_test()
+    if argv[:1] == ["record-attestations"]:
+        if len(argv) < 2:
+            raise SystemExit("usage: manifest.py record-attestations MANIFEST [URL...]")
+        record_attestations(pathlib.Path(argv[1]), argv[2:])
         return
     parser = argparse.ArgumentParser()
     parser.add_argument("--component", default="agent-kit")
@@ -152,10 +133,20 @@ def main(argv: list[str]) -> None:
     parser.add_argument("--attestation", action="append", default=[])
     parser.add_argument("--gate-flag", action="append", default=[])
     parser.add_argument("--label", action="append", default=[])
+    parser.add_argument("--merged-labels", help="file of <merge-commit>\\t<label> lines")
+    parser.add_argument("--range-commits", help="file of the release range's commits")
     args = parser.parse_args(argv)
     dist = pathlib.Path(args.dist)
+    labels = list(args.label)
+    if args.merged_labels:
+        labels.extend(
+            labels_in_range(
+                pathlib.Path(args.merged_labels).read_text(),
+                pathlib.Path(args.range_commits).read_text(),
+            )
+        )
     flags = list(args.gate_flag)
-    flags.extend(gate_flags_from_labels(args.label))
+    flags.extend(gate_flags_from_labels(labels))
     manifest = build_manifest(
         component=args.component,
         version=args.version,

@@ -2,11 +2,11 @@
 # Build release artifacts into --out without publishing or attesting.
 #
 # Usage:
-#   bash scripts/release-package.sh --out dist [--tag vX.Y.Z] [--git-sha SHA]
+#   bash scripts/release/package.sh --out dist [--tag vX.Y.Z] [--git-sha SHA]
 #        [--skip-build] [--skip-test] [--skip-github]
 set -euo pipefail
 
-ROOT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_PATH"
 
 OUT=""
@@ -17,7 +17,7 @@ SKIP_TEST=0
 SKIP_GITHUB=0
 
 fail() {
-  printf 'release-package: %s\n' "$1" >&2
+  printf 'package: %s\n' "$1" >&2
   exit 1
 }
 
@@ -47,7 +47,7 @@ release_version() {
 VERSION="$(release_version)"
 if [[ -n "$TAG" ]]; then
   [[ "${TAG#v}" == "$VERSION" ]] || fail "tag ${TAG} does not match VERSION ${VERSION}"
-  python3 "$ROOT_PATH/scripts/changelog-notes.py" "$VERSION" >"${OUT}/RELEASE_NOTES.md"
+  python3 "$ROOT_PATH/scripts/release/notes.py" "$VERSION" >"${OUT}/RELEASE_NOTES.md"
 fi
 if [[ -z "$GIT_SHA" ]]; then
   GIT_SHA="$(git rev-parse HEAD)"
@@ -64,7 +64,7 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
     skills templates scripts security
 fi
 
-python3 "$ROOT_PATH/scripts/release-sbom.py" "${OUT}/agent-kit.cdx.json"
+python3 "$ROOT_PATH/scripts/release/sbom.py" "${OUT}/agent-kit.cdx.json"
 
 python3 -c '
 import hashlib, pathlib, sys
@@ -76,7 +76,7 @@ for path in sorted(p for p in out.iterdir() if p.is_file() and p.name != "SHA256
 (out / "SHA256SUMS").write_text("\n".join(lines) + ("\n" if lines else ""))
 ' "$OUT"
 
-LABEL_ARGS=()
+GATE_ARGS=()
 if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]]; then
   # Empty gate flags would read as a release that passed no gates, so a
   # tagged run fails closed when the merged pull requests cannot be read.
@@ -86,6 +86,8 @@ if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]]; then
   # or a final release would drop gates first seen in its release candidates,
   # and a pull request merged after the tagged commit never counts, even when a
   # retry runs days later.
+  gates="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-gates.XXXXXX")"
+  trap 'rm -rf "$gates"' EXIT
   prev="$(git describe --tags --abbrev=0 --match 'v*' --exclude '*-*' "${GIT_SHA}^" 2>/dev/null || true)"
   range="$GIT_SHA"
   query="merged:<=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd "$GIT_SHA")"
@@ -93,16 +95,11 @@ if [[ -n "$TAG" && "$SKIP_GITHUB" -eq 0 ]]; then
     range="${prev}..${GIT_SHA}"
     query="merged:>=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd "$prev") ${query}"
   fi
-  merged="$(gh pr list --state merged --limit 1000 --search "$query" --json mergeCommit,labels \
-    --jq '.[] | select(.mergeCommit != null) | .mergeCommit.oid as $oid | .labels[] | "\($oid)\t\(.name)"')" \
-    || fail "cannot list merged pull requests for gate flags"
-  in_range="$(git rev-list "$range")"
-  while IFS= read -r label; do
-    [[ -n "$label" ]] && LABEL_ARGS+=("--label" "$label")
-  done < <(
-    awk -F'\t' 'NR == FNR { in_range[$1] = 1; next } in_range[$1] { print $2 }' \
-      <(printf '%s\n' "$in_range") <(printf '%s\n' "$merged") | sort -u
-  )
+  gh pr list --state merged --limit 1000 --search "$query" --json mergeCommit,labels \
+    --jq '.[] | select(.mergeCommit != null) | .mergeCommit.oid as $oid | .labels[] | "\($oid)\t\(.name)"' \
+    >"${gates}/merged-labels" || fail "cannot list merged pull requests for gate flags"
+  git rev-list "$range" >"${gates}/range-commits"
+  GATE_ARGS=(--merged-labels "${gates}/merged-labels" --range-commits "${gates}/range-commits")
 fi
 
 manifest_args=(
@@ -115,10 +112,10 @@ manifest_args=(
 if [[ -n "$TAG" ]]; then
   manifest_args+=(--tag "$TAG")
 fi
-if [[ ${#LABEL_ARGS[@]} -gt 0 ]]; then
-  manifest_args+=("${LABEL_ARGS[@]}")
+if [[ ${#GATE_ARGS[@]} -gt 0 ]]; then
+  manifest_args+=("${GATE_ARGS[@]}")
 fi
-python3 "$ROOT_PATH/scripts/release-manifest.py" "${manifest_args[@]}"
+python3 "$ROOT_PATH/scripts/release/manifest.py" "${manifest_args[@]}"
 
 echo "version=${VERSION}"
 echo "artifacts in ${OUT}:"

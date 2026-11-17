@@ -23,11 +23,15 @@ request.
 
 - `bash scripts/validate-kit.sh` validates canonical skills and self-tests the
   consumer check. It is the skill gate.
-- `bash scripts/validate-release.sh` checks the release path: a `v*` tag
-  only dispatches `release.yml` on `main` (script self-tests, workflow gates,
-  dry-run package does not publish).
-- CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, and the
-  release-script gate.
+- `bash scripts/check-workflows.sh` lints `.github/workflows/` with the
+  pinned workflow linter and workflow security auditor, the same in CI and
+  locally.
+- `python3 -m unittest discover -s tests -t .` runs the release tests:
+  `scripts/release/` behavior and the release workflow invariants, asserted
+  on parsed YAML. `tests/release/test_workflows.py` needs PyYAML
+  (`python3 -m pip install --require-hashes -r tests/requirements.txt`).
+- CI (`.github/workflows/ci.yml`) runs the skill gate, ShellCheck, the
+  workflow lint, and the release tests.
 
 GitHub Issues are the planning source of truth. Shared skills stay in
 `skills/`. This repository uses its own canonical skills instead of stubs:
@@ -177,9 +181,8 @@ Parallel lanes must not collide. Collision surfaces in this repository are
 `scripts/validate-kit.sh`, `scripts/validate-workflow-skills.sh`,
 `scripts/gh-verified-push.sh`, the stub/profile contract in `README.md`,
 `VERSION`, `docs/decisions/`,
-`.github/workflows/`, `scripts/release-package.sh`,
-`scripts/verify-release-tag.sh`, `scripts/validate-release.sh`, `security/`,
-and `RELEASING.md`.
+`.github/workflows/`, `scripts/release/`, `scripts/check-workflows.sh`,
+`tests/`, `security/`, and `RELEASING.md`.
 Lanes that would both change one of these surfaces run in sequence, not in
 parallel.
 
@@ -239,7 +242,9 @@ Add focused checks in `scripts/validate-kit.sh` for changes touching skill
 frontmatter, required headings, the stub template, vendored scripts, or the
 consumer check. Prefer deterministic fixture renders that do not need GitHub.
 `bash scripts/validate-kit.sh` must stay green offline. Release-path changes
-add `bash scripts/validate-release.sh`.
+add a test under `tests/release/`: script behavior through the script, and a
+workflow invariant no linter expresses as an assertion on the parsed YAML,
+never on a step's wording.
 
 ## Commit & Pull Request Guidelines
 
@@ -308,7 +313,9 @@ Rows beyond `## Testing Guidelines`:
 | --- | --- |
 | skill contract | `bash scripts/validate-kit.sh` |
 | shell scripts | `shellcheck -S warning scripts/*.sh skills/*/scripts/*.sh` |
-| release path | `bash scripts/validate-release.sh` |
+| shell scripts (release) | `shellcheck -S warning scripts/release/*.sh` |
+| workflows | `bash scripts/check-workflows.sh` |
+| release path | `python3 -m unittest discover -s tests -t .` |
 
 ### Release audit
 

@@ -132,8 +132,9 @@ so the kit is installed and current before the agent starts.
 ## Development
 
 `bash scripts/validate-kit.sh` validates the canonical skills and self-tests the
-consumer check. `bash scripts/validate-release.sh` checks the signed-tag
-release path. Commits are published with `scripts/gh-verified-push.sh`.
+consumer check. `bash scripts/check-workflows.sh` lints the workflows, and
+`python3 -m unittest discover -s tests -t .` tests the signed-tag release
+path. Commits are published with `scripts/gh-verified-push.sh`.
 
 ## License
 
