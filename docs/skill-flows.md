@@ -61,7 +61,7 @@ question. It returns a draft Issue and never publishes without authorization.
 ```mermaid
 flowchart TD
     start(["Raw idea, bug, refactor, or research question"]) --> read["Read AGENTS.md, README, accepted ADRs,<br/>Issue forms, and the affected code"]
-    read --> dup["Search Issues, Discussions, and Pull Requests<br/>for duplicates"]
+    read --> dup["Search Issues, Discussions, and Pull Requests;<br/>link or rule out each overlap"]
     dup --> sens{"Sensitive or<br/>exploitable?"}
     sens -->|"yes"| vuln(["Stop: private vulnerability report,<br/>never a public Issue"])
     sens -->|"no"| owner{"Owned by another<br/>repository?"}
@@ -71,7 +71,7 @@ flowchart TD
     classify --> many{"Several findings<br/>from a review or audit?"}
     many -->|"yes"| split["One Issue per finding. Group only<br/>findings that one fix closes"]
     many -->|"no"| draft
-    split --> draft["Draft: problem, observable outcome, non-goals,<br/>acceptance evidence, area, risks,<br/>GitHub dependencies. Say how each claim is known"]
+    split --> draft["Draft: problem, observable outcome, non-goals,<br/>acceptance evidence, area, risks,<br/>GitHub dependencies. Say how each claim is known;<br/>no design unless a validated constraint"]
     draft --> known{"Bug whose problem<br/>is not verified?"}
     known -->|"yes"| unverified(["Stop: Issue stays in status:triage until the<br/>problem is reproduced or read from source"])
     known -->|"no"| kind{"What kind of<br/>open question is left?"}
@@ -86,7 +86,7 @@ flowchart TD
     research --> ready
     need -->|"yes"| ready
     need -->|"no"| nofile(["Stop: recommend not filing,<br/>name the evidence that would change that"])
-    decision --> triage["Issue stays in status:triage"]
+    decision --> triage["Issue stays in status:triage,<br/>the question explicit in the body"]
     ready --> out(["Draft Issue, labels, possible duplicates"])
     triage --> blocked(["Stop: draft Issue plus the decision<br/>for you to accept or reject"])
 ```

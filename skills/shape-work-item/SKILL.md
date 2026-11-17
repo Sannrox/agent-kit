@@ -19,6 +19,8 @@ explicitly authorizes publishing to GitHub.
    boundaries (see `## Dependencies and Ownership` in `AGENTS.md`).
 2. Search open and closed Issues, Discussions, and PRs when GitHub access is
    available. Record possible duplicates or state that the search was not run.
+   Complete only when each overlapping Issue or Pull Request is linked or
+   ruled out with a reason.
 3. Classify the work:
    - `bug`: reproducible expected-versus-actual behavior;
    - `feature`: a new observable outcome as defined by the `Feature:` line under
@@ -31,6 +33,7 @@ explicitly authorizes publishing to GitHub.
    under `## GitHub dependencies`. Route cross-boundary,
    public-contract, trust-model, or difficult-to-reverse choices to a Design
    Discussion before implementation.
+   Give the Issue one primary route; explain each exception to it.
    One Issue carries one outcome that one Pull Request can deliver. When a
    review or audit yields several findings, shape one Issue per finding. Group
    findings only when they share a cause and one fix closes them all. Never
@@ -45,6 +48,8 @@ explicitly authorizes publishing to GitHub.
    Write acceptance evidence as the observable behavior and the one boundary
    that proves it. Do not list tests: which tests exist is decided at delivery
    by the `test-audit` authoring gate.
+   Keep implementation design out of the body unless it is a validated
+   constraint; delivery chooses the design.
    Say how each claim about current behavior is known: `reproduced` (you ran
    it and saw it), `read from source` (cite `path:line` at a commit), or
    `not verified`. Write `not verified` instead of a guess. A `bug` whose
@@ -56,7 +61,8 @@ explicitly authorizes publishing to GitHub.
    the Issue to judgment on every run. Boundaries, gates, and related work go
    in another section.
 5. Settle open questions. A question left for the maintainer keeps the Issue
-   in `status:triage`.
+   in `status:triage` and stays in the body as an explicit question, never
+   rewritten as a fact.
    - A fact the code, docs, or Issue history can answer: look it up.
    - A routine or reversible choice: decide it and write it into the body as
      a decision marked `Assumed:`, so review can overturn it. It does not
