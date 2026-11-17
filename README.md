@@ -103,7 +103,9 @@ There is no pinning, exactly like OpenClaw: consumers always use the latest
 Tenkai; consumers still do not pin them. See `RELEASING.md`.
 
 - `scripts/validate-workflow-skills.sh` (run in each consumer's CI) clones or
-  fast-forwards `~/.agents/agent-kit` to `main`, then fails when a default
+  fast-forwards `~/.agents/agent-kit` to `main` (a checkout on another branch
+  is left alone and checked against a snapshot of the latest `main`), then
+  fails when a default
   skill (`templates/default-skills.txt`) has no stub, a stub differs from the
   current template, a stub names a skill that no longer exists, a shared skill
   is vendored, a vendored script (`templates/vendored-scripts.txt`) drifted, or
