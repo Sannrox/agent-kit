@@ -136,6 +136,9 @@ fixture() { # number labels-csv dependency-section
   fixture 23 status:blocked '- #1 (after the owner approves)'
   fixture 24 status:blocked '- #2
 - #3'
+  # #48: a plain "Dependencies" heading is read; with both, "GitHub dependencies" wins.
+  fixture 25 status:ready '- #2' | jq -c '.body |= sub("## GitHub dependencies"; "### dependencies")'
+  fixture 26 status:ready '- #1' | jq -c '.body += "\n## Dependencies\n\n- #2\n"'
 } | jq -s . > "$fr/issues"
 frontier() { # expected-exit args...
   local code=0 want="$1"; shift
@@ -145,9 +148,12 @@ frontier() { # expected-exit args...
 : > "$fr/calls"
 frontier 0 --json
 [ ! -s "$fr/calls" ] || fail "self-test: frontier.sh without --apply relabeled: $(cat "$fr/calls")"
-want='{"10":"ready","11":"ready","12":"blocked","13":"judgment","14":"anomalous","15":"anomalous","16":"anomalous","17":"anomalous","18":"blocked","19":"blocked","20":"judgment","21":"judgment","22":"ready","23":"judgment","24":"judgment"}'
+want='{"10":"ready","11":"ready","12":"blocked","13":"judgment","14":"anomalous","15":"anomalous","16":"anomalous","17":"anomalous","18":"blocked","19":"blocked","20":"judgment","21":"judgment","22":"ready","23":"judgment","24":"judgment","25":"blocked","26":"ready"}'
 printf '%s' "$out" | jq -e --argjson w "$want" '[.issues[] | {key: (.number | tostring), value: .state}] | from_entries == $w' >/dev/null \
   || fail "self-test: frontier.sh states differ from $want: $out"
+printf '%s' "$out" | jq -e '(.issues[] | select(.number == 21) | .why | test("GitHub dependencies.*Dependencies"))
+  and (.issues[] | select(.number == 26) | .why | test("ignored .Dependencies"))' >/dev/null \
+  || fail "self-test: frontier.sh did not name the dependency headings it read or looked for: $out"
 frontier 0 --apply
 sort "$fr/calls" | diff - <(printf '%s\n' \
   'issue edit 10 -R o/r --add-label status:ready --remove-label status:blocked' \
@@ -155,7 +161,8 @@ sort "$fr/calls" | diff - <(printf '%s\n' \
   'issue edit 14 -R o/r --add-label status:blocked --remove-label status:ready' \
   'issue edit 15 -R o/r --add-label status:blocked --remove-label status:ready' \
   'issue edit 16 -R o/r --add-label status:blocked --remove-label status:ready' \
-  'issue edit 22 -R o/r --remove-label status:blocked') >/dev/null \
+  'issue edit 22 -R o/r --remove-label status:blocked' \
+  'issue edit 25 -R o/r --add-label status:blocked --remove-label status:ready') >/dev/null \
   || fail "self-test: frontier.sh --apply made the wrong edits: $(cat "$fr/calls")"
 : > "$fr/calls"; touch "$fr/down"
 frontier 1 --apply

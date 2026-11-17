@@ -99,7 +99,7 @@ you explicitly ask it to update Issue state.
 ```mermaid
 flowchart TD
     start(["What is ready next, or a merge just landed"]) --> live["Read live Issues, Pull Requests, claim branches,<br/>assignments, and local worktrees"]
-    live --> script["frontier.sh classifies every open Issue<br/>from its GitHub dependencies section"]
+    live --> script["frontier.sh classifies every open Issue<br/>from its GitHub dependencies<br/>or Dependencies section"]
     script --> dep{"Dependency state"}
     dep -->|"anomalous: missing reference,<br/>self-dependency, cycle"| anomaly["Keep blocked, report the evidence"]
     dep -->|"blocked"| blockedIssue["Blocked: list the open dependencies"]

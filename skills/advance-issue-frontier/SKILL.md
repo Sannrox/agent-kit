@@ -54,7 +54,7 @@ Requests. Do not rely on a stale local backlog export.
 2. Compute the dependency state with
    `bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/advance-issue-frontier/scripts/frontier.sh" --json`.
    It parses dependencies only from each Issue's `## GitHub dependencies`
-   section, resolves `<owner>/<repo>#<n>` references against that repository,
+   section, or `## Dependencies` when that is the only one, resolves `<owner>/<repo>#<n>` references against that repository,
    and classifies each open Issue as `ready` (every reference closed as
    completed), `blocked`, `anomalous` (missing reference, self-dependency, or
    in or behind a same-repository cycle), or `judgment`. A cycle through
