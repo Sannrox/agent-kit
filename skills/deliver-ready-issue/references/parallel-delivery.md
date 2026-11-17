@@ -145,6 +145,19 @@ Lane brief
    Never repurpose its branch or worktree for another Issue. A lane abandoned
    before any commit is released with
    `LANE_TOKEN=<token> bash "${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/deliver-ready-issue/scripts/issue-lane.sh" release <issue>`.
+6. Lanes on one machine run their test suites at the same time. A test that
+   passes only as the sole process on the machine is broken. Every lane:
+   - binds test listeners to port `:0` and reads the assigned port back,
+     never a fixed port;
+   - names temp paths with the process id and a unique suffix, never a fixed
+     file name;
+   - builds into its own artifact directory inside its worktree, never a
+     cache or output directory shared with another lane;
+   - treats a "one thread" test flag as serializing inside one process only;
+     it does not isolate two lanes;
+   - treats a test at 0% CPU as stuck, not slow (a deadlock, a build-lock
+     wait, or a nested store checkout): find the cause instead of raising
+     the timeout.
 
 ## 4. Publish and land in sequence
 
