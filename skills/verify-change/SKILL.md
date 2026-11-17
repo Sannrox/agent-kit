@@ -1,6 +1,6 @@
 ---
 name: verify-change
-description: Verify a Rust, documentation, configuration, or workflow change with proportionate deterministic checks. Use after implementation, before review, or when a contributor needs an exact evidence report without overstating unrun tests.
+description: Verify a source, documentation, configuration, or workflow change with proportionate deterministic checks. Use after implementation, before review, or when a contributor needs an exact evidence report without overstating unrun tests.
 ---
 
 <!-- Canonical source: Sannrox/agent-kit skills/verify-change. Derived from Sannrox/shikigami@331897846885e4a55697b0f1006d03b4f2a7495e. Repository-specific facts live in the consuming repository's AGENTS.md (## Agent skill profile and the sections it builds on). -->
@@ -11,9 +11,10 @@ Run the narrowest useful checks first, then expand according to change risk.
 
 ## Procedure
 
-1. Inspect `git status`, the diff, and the stated outcome. Preserve unrelated
-   worktree changes. Use `assess-change-impact` when risk is unclear. Complete
-   when every changed path is classified.
+1. Record the candidate before checking: `git rev-parse HEAD` and
+   `git status --porcelain`. Inspect the diff and the stated outcome. Preserve
+   unrelated worktree changes. Use `assess-change-impact` when risk is
+   unclear. Complete when every changed path is classified.
 2. Run focused tests for the affected module first. Add checks
    based on the surface:
 
@@ -26,7 +27,8 @@ Run the narrowest useful checks first, then expand according to change risk.
 
 3. Before ship-level handoff, run the same gates as CI
    (`.github/workflows/ci.yml`) unless the user explicitly requested a
-   narrower check. Copy the commands from `AGENTS.md`. Do not assume Cargo.
+   narrower check. Copy the commands from `AGENTS.md`. Do not assume a
+   language or build tool.
 
    CI is the source of truth for the command set; if it changes, follow it and
    update `AGENTS.md`. Complete when every applicable local gate has a result.
@@ -39,12 +41,23 @@ Run the narrowest useful checks first, then expand according to change risk.
    (`${AGENT_KIT_HOME:-$HOME/.agents/agent-kit}/skills/test-audit/SKILL.md`)
    and report its wall time. A test that fails the gate is removed or moved to
    its owning boundary, not kept for count.
-6. Review failures against the changed scope. Report pre-existing failures with
+6. A hosted check counts only when it ran on the exact candidate SHA. A
+   queued check, a stale one, or one from an earlier head is not proof.
+   Mocked tests do not establish live integration behavior; name the live
+   path they leave unproven.
+7. Review failures against the changed scope. Report pre-existing failures with
    evidence; do not relabel a failure as pre-existing without comparison.
-7. Ask of each check: could it pass while the stated outcome is still broken?
+   Repair a root cause at its owner, not with a guard that only hides the
+   symptom.
+8. Ask of each check: could it pass while the stated outcome is still broken?
    If so, it is not evidence for the outcome; name the gap.
-8. A command that failed twice the same way with no new evidence fails a third
+9. A command that failed twice the same way with no new evidence fails a third
    time. Change the approach or report the blocker; do not retry it.
+
+10. Repeat the revision guard at the end: `git rev-parse HEAD` and
+    `git status --porcelain` must match what step 1 recorded. HEAD and status
+    are provenance, not a content fingerprint; if either changed, the results
+    belong to the earlier candidate and are reported as such.
 
 ## Output
 
@@ -52,6 +65,9 @@ Report:
 
 - the commit the checks ran against (`git rev-parse HEAD`) and whether the
   tree was clean; results from an earlier commit are named as such;
+- three separate statuses, never merged into one: evidence (`hypothesis`,
+  `reproduced`, or `validated`), review disposition (not reviewed, findings
+  open, clean), and delivery status (local, published, landed);
 - commands run and pass/fail result;
 - focused behavior covered;
 - checks skipped with reasons;

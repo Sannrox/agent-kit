@@ -312,7 +312,8 @@ checks only and does not replace autoreview.
 
 ```mermaid
 flowchart TD
-    start(["A diff and its stated outcome"]) --> classify["Classify every changed path"]
+    start(["A diff and its stated outcome"]) --> record["Record the candidate:<br/>HEAD and git status"]
+    record --> classify["Classify every changed path"]
     classify --> risk{"Risk unclear?"}
     risk -->|"yes"| impact[["assess-change-impact"]]
     risk -->|"no"| focused
@@ -329,15 +330,19 @@ flowchart TD
     fail -->|"yes"| pre{"Also fails without<br/>the change?"}
     pre -->|"yes, compared"| existing["Report as pre-existing, with evidence"]
     pre -->|"no"| blocking["Report as caused by the change"]
-    fail -->|"no"| report
-    existing --> report
-    blocking --> report(["Report: commit checked, commands and results,<br/>behavior covered, skipped checks with reasons,<br/>remaining uncertainty"])
+    fail -->|"no"| guard
+    existing --> guard
+    blocking --> guard{"HEAD and status still<br/>match the record?"}
+    guard -->|"no"| earlier["Report the results as<br/>belonging to the earlier candidate"]
+    guard -->|"yes"| report
+    earlier --> report(["Report: commit checked, commands and results,<br/>evidence, review and delivery status,<br/>skipped checks with reasons, remaining uncertainty"])
 ```
 
 Skipped service or kernel tests are named with their reason and residual risk.
 A check that could pass while the outcome is still broken is named as a gap,
 not counted as evidence. A command that failed twice the same way is not
-retried a third time.
+retried a third time. A hosted check counts only on the exact candidate SHA,
+and a mocked test does not prove live integration behavior.
 
 ## validate-behavior
 
