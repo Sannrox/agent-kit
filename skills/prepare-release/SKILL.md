@@ -64,7 +64,10 @@ published release.
    hostnames, FQDNs, IP addresses, home directories, absolute worktree paths,
    LAN or employer network names, deployment or environment state, image or
    artifact digests, tenant or customer names, release-hold or rollout-hold
-   language, or other private environment inventory.
+   language, or other private environment inventory. Credit contributors
+   through generated notes (the repository's notes generator, or
+   `gh release create --generate-notes`, which lists merged Pull Requests and
+   new contributors); never keep a manual contributor ledger.
 6. Report go/no-go. A release is `go` only when required checks pass, no known
    blocker remains, and rollback/upgrade implications are explicit. Stop here
    under Prepare, or on `no-go` under any ceiling.
@@ -120,10 +123,13 @@ line. The worktree, bump branch, and squash-merge target follow the base.
 5. Verify the published release with
    `gh release view <tag> --json tagName,isDraft,isPrerelease,body,assets`:
    not a draft, pre-release exactly when the version has a pre-release suffix,
-   body equal to the `CHANGELOG.md` section, and the artifacts the
+   body equal to the `CHANGELOG.md` section (followed by generated
+   contributor credit when the repository adds it), and the artifacts the
    `### Release audit` requires attached. A final release of the current
    line is the repository's latest release. A final release on a previous
    maintenance line is not latest. A pre-release never is.
+   A missing artifact is attached with `gh release upload <tag> <file>`
+   only. It never passes notes, so the published body stays as it is.
 6. After a final release, close the version milestone when no open Issues
    remain in it. A pre-release leaves the milestone open.
 
@@ -141,6 +147,8 @@ Separate verified facts from recommendations.
 - Never create, sign, push, move, or delete a release tag; the maintainer
   does.
 - Never edit, re-publish, or delete a published release; cut a new version.
+  Attaching a missing artifact with `gh release upload` is the one exception,
+  and it never rewrites the notes.
 - Release only from a commit on `main` or the matching maintenance line.
 - Never cut the newest release from a maintenance line.
 - Change `CHANGELOG.md` only in the version-bump Pull Request.
