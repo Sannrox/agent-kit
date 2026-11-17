@@ -54,6 +54,12 @@ grep -Fq 'git cherry-pick -x' skills/deliver-ready-issue/SKILL.md || fail "deliv
 grep -Eq 'issue-lane\.sh"?[[:space:]]+check' skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use issue-lane.sh check"
 grep -Fq scripts/frontier.sh skills/advance-issue-frontier/SKILL.md || fail "advance-issue-frontier does not use scripts/frontier.sh"
 grep -Fq scripts/ci-report.sh skills/ci-audit/SKILL.md || fail "ci-audit does not use scripts/ci-report.sh"
+# #78: a skill's `references/...` or `../...` path resolves from the file that names it.
+for f in skills/*/SKILL.md skills/*/references/*.md; do
+  while IFS= read -r p; do
+    [ -e "$(dirname "$f")/$p" ] || fail "$f names $p, which does not resolve from its directory"
+  done < <(grep -oE '`(references/|\.\./)[A-Za-z0-9_./-]+\.md`' "$f" | tr -d '`' || true)
+done
 
 for s in scripts/*.sh skills/*/scripts/*.sh; do bash -n "$s" || fail "syntax error in $s"; done
 bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity --self-test >/dev/null || fail "issue-lane.sh capacity self-test failed"
