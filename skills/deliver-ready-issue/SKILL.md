@@ -229,7 +229,9 @@ mark the Issue unless documented maintainer policy requires it.
    `lane-publish/<issue>/rebase` and moves the claim branch onto it with one
    ref update guarded by the old tip, only when this checkout once held that
    tip. If it stops, run it again; it never overwrites work another checkout
-   published. Confirm it reports `verification.verified=true`. Publish
+   published. A first `push` after rebasing onto a newer `main`, while the
+   claim branch holds no lane commits yet, takes that path by itself, so the
+   Pull Request never re-adds what `main` gained since the claim. Confirm it reports `verification.verified=true`. Publish
    with `git push` instead only when `AGENTS.md` (`### Verified commits on
    GitHub`) says the repository does, or the user asks.
 3. Open the Pull Request as a draft with the first published commit, then mark

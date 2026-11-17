@@ -42,7 +42,9 @@
 # kit's gh-verified-push.sh and resets the checkout to the published commit, so
 # local HEAD equals the Pull Request head afterwards. It refuses a checkout
 # merged with the default branch, and one rebased onto it after the publish
-# unless --rebased is given. push --rebased publishes the rebased lane in two
+# unless --rebased is given. The first publish of a lane rebased onto a newer
+# default branch, while the claim branch still holds no lane commits, takes
+# the --rebased path by itself. push --rebased publishes the rebased lane in two
 # steps: it publishes the delta from the new base (the merge base of HEAD and
 # the default branch) to HEAD as one verified commit on the scratch branch
 # lane-publish/<issue>/rebase, then moves the claim branch onto that commit
@@ -918,11 +920,6 @@ case "$command_name" in
     default_tip="${default_tip%%[[:space:]]*}"
     git fetch --quiet origin "$remote_tip" "$default_tip"
     scratch="lane-publish/${issue}/rebase"
-    if [ "$rebased" = true ]; then
-      # A scratch branch left by an earlier push --rebased is ours: require_mine
-      # proved this lane is the Issue's only owner.
-      gh api -X DELETE "repos/${repo}/git/refs/heads/${scratch}" >/dev/null 2>&1 || true
-    fi
     recover="verified publishing cannot publish a merge. Recover: rebase onto ${default_branch} instead and run push ${issue} --rebased"
     # The branch already holds HEAD: either nothing changed since the last
     # publish (identical tree), or a publish stopped before syncing and left
@@ -946,24 +943,37 @@ case "$command_name" in
     # Publish only on top of what is on GitHub: a stale or rebased checkout
     # would overwrite or misplace published commits, and a merge commit
     # cannot be published at all.
-    if git merge-base --is-ancestor "$remote_tip" HEAD; then
-      [ -z "$(git rev-list --min-parents=2 --max-count=1 "${remote_tip}..HEAD")" ] \
-        || fail "local history of ${current} merges another branch after ${remote_tip:0:12}; ${recover}"
-      bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$current" \
-        --expected-oid "$remote_tip" --sync-local
-      exit 0
-    fi
-    [ "$rebased" = true ] \
-      || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); it was rebased or rewritten after the publish. If it was rebased onto ${default_branch}, run push ${issue} --rebased"
-    held_locally "$current" "$remote_tip" \
-      || fail "${current} on origin (${remote_tip:0:12}) was never held by this checkout; fetch and rebase the published work before push --rebased"
     new_base="$(git merge-base HEAD "$default_tip")" \
       || fail "local HEAD shares no history with ${default_branch}"
+    # First publish of a lane rebased onto a newer default branch: the claim
+    # branch still sits at a default-branch commit behind the new base, so it
+    # carries no lane work. Publishing on it would re-add everything the default branch
+    # gained since the claim; publish on the new base instead, as --rebased.
+    first_rebased=false
+    if [ "$new_base" != "$remote_tip" ] && git merge-base --is-ancestor "$remote_tip" "$new_base"; then
+      first_rebased=true
+    fi
+    if [ "$first_rebased" = false ]; then
+      if git merge-base --is-ancestor "$remote_tip" HEAD; then
+        [ -z "$(git rev-list --min-parents=2 --max-count=1 "${remote_tip}..HEAD")" ] \
+          || fail "local history of ${current} merges another branch after ${remote_tip:0:12}; ${recover}"
+        bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$current" \
+          --expected-oid "$remote_tip" --sync-local
+        exit 0
+      fi
+      [ "$rebased" = true ] \
+        || fail "local HEAD does not descend from ${current} on origin (${remote_tip:0:12}); it was rebased or rewritten after the publish. If it was rebased onto ${default_branch}, run push ${issue} --rebased"
+      held_locally "$current" "$remote_tip" \
+        || fail "${current} on origin (${remote_tip:0:12}) was never held by this checkout; fetch and rebase the published work before push --rebased"
+    fi
     local_work_since "$new_base" \
       || fail "local history of ${current} merges another branch after ${new_base:0:12}; ${recover}"
     [ "$(git rev-parse "${new_base}^{tree}")" != "$(git rev-parse 'HEAD^{tree}')" ] \
       || fail "local HEAD holds no change on top of ${default_branch} (${new_base:0:12}); nothing to publish"
     [ -z "$(git status --porcelain)" ] || fail "working tree is dirty; commit or discard before publishing"
+    # A scratch branch left by an earlier rebased push is ours: require_mine
+    # proved this lane is the Issue's only owner.
+    gh api -X DELETE "repos/${repo}/git/refs/heads/${scratch}" >/dev/null 2>&1 || true
     # Step 1: one verified commit with parent new_base, off the Pull Request.
     published="$(bash "${KIT_ROOT}/scripts/gh-verified-push.sh" --repo "$repo" --branch "$scratch" \
       --create-branch-from "$new_base")"
