@@ -65,7 +65,10 @@ done
 
 for f in $scripts; do
   [ -f "${kit}/scripts/${f}" ] || { fail "script ${f} does not exist in agent-kit main"; continue; }
-  if [ "$mode" = "--render" ]; then cp "${kit}/scripts/${f}" "${root}/scripts/${f}"; chmod +x "${root}/scripts/${f}"; fi
+  # Write content only: an existing file keeps the mode the consumer tracks,
+  # and a new one is created without the executable bit (scripts run through
+  # their interpreter).
+  if [ "$mode" = "--render" ]; then cat "${kit}/scripts/${f}" > "${root}/scripts/${f}"; fi
   cmp -s "${kit}/scripts/${f}" "${root}/scripts/${f}" || fail "scripts/${f} differs from agent-kit main (run --render)"
 done
 
