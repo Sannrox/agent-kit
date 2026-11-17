@@ -110,6 +110,10 @@ Tenkai; consumers still do not pin them. See `RELEASING.md`.
   current template, a stub names a skill that no longer exists, a shared skill
   is vendored, a vendored script (`templates/vendored-scripts.txt`) drifted, or
   `AGENTS.md` lacks a required heading, or `.agents/project.md` still exists.
+- That job runs unpinned kit code from `main`, so give it only read access:
+  set `permissions: contents: read` on the job, and run `actions/checkout`
+  with `persist-credentials: false` so no token is left in the checkout's Git
+  config for the kit code to use. The check needs no write access.
 - Because consumers track `main`, a change here to the stub template, the
   vendored scripts, skill names or `## Agent skill profile` headings turns consumer CI red
   until they re-run `--render`. Treat those as breaking: announce them in the
