@@ -94,7 +94,7 @@ repository's `AGENTS.md`:
 
 `## Agent skill profile` holds only what the other sections do not already say
 (see `templates/agent-skill-profile.md`); its headings are a contract checked in
-CI. There is no `.agents/project.md`; the check fails if one exists.
+CI. A template heading whose first line starts with `Optional:` may be left out. There is no `.agents/project.md`; the check fails if one exists.
 
 ## Versioning and drift
 

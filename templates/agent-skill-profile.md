@@ -20,3 +20,9 @@ Rows beyond `## Testing Guidelines`:
 ### Release audit
 
 - items to audit before a release;
+
+### Additional impact boundaries
+
+Optional: delete this section when the sections above already name every
+boundary. Otherwise list the boundaries `assess-change-impact` must trace that
+they do not cover.

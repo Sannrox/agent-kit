@@ -12,7 +12,8 @@
 #   - vendored scripts (templates/vendored-scripts.txt) are byte-identical to the kit
 #     (validate-workflow-skills.sh; gh-verified-push.sh is optional and not listed);
 #   - AGENTS.md has the ## Agent skill profile section with its contract
-#     headings (templates/agent-skill-profile.md); .agents/project.md is gone;
+#     headings (templates/agent-skill-profile.md; a heading whose first line
+#     starts with "Optional:" is not required); .agents/project.md is gone;
 #   - .claude/skills, when present, is a symlink to ../.agents/skills, because
 #     Claude Code discovers skills only under .claude/skills;
 #   - AGENTS.md references Sannrox/agent-kit and keeps the parallel-lane policy;
@@ -84,7 +85,7 @@ grep -Fqx "## Agent skill profile" "${root}/AGENTS.md" 2>/dev/null || fail "AGEN
 grep -q '^Feature: .' "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md ## Agent skill profile is missing the Feature: line"
 while IFS= read -r h; do
   grep -Fqx "$h" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing heading: $h"
-done < <(grep '^### ' "${kit}/templates/agent-skill-profile.md")
+done < <(awk '/^### /{h=$0; next} h!="" && NF {if ($0 !~ /^Optional:/) print h; h=""} END{if (h!="") print h}' "${kit}/templates/agent-skill-profile.md")
 
 grep -Fq "Sannrox/agent-kit" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md does not reference Sannrox/agent-kit"
 grep -Fqx "## Parallel delivery lanes" "${root}/AGENTS.md" 2>/dev/null || fail "AGENTS.md is missing ## Parallel delivery lanes"

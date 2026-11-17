@@ -65,6 +65,15 @@ mkdir -p "$tmp/.agents" "$tmp/scripts"
 printf 'See AGENTS.md\n' > "$tmp/CLAUDE.md"; printf '/.worktrees/\n' > "$tmp/.gitignore"
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
+# #77: an Optional: heading may be left out; a required one may not.
+cp "$tmp/AGENTS.md" "$tmp/AGENTS.full"
+grep -Fqx '### Additional impact boundaries' "$tmp/AGENTS.md" || fail "self-test: the fixture lacks the optional slot, so removing it proves nothing"
+awk '/^### Additional impact boundaries$/{skip=1; next} /^#/{skip=0} !skip' "$tmp/AGENTS.full" > "$tmp/AGENTS.md"
+grep -Fq 'Additional impact' "$tmp/AGENTS.md" && fail "self-test: the optional slot was not removed"
+bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null || fail "self-test: check-consumer required the optional Additional impact boundaries heading"
+grep -vFx '### Release audit' "$tmp/AGENTS.full" > "$tmp/AGENTS.md"
+if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "self-test: a missing required profile heading was not detected"; fi
+mv "$tmp/AGENTS.full" "$tmp/AGENTS.md"
 # #58: --render writes vendored scripts without changing the consumer's mode.
 vendored="$tmp/scripts/validate-workflow-skills.sh"
 [ ! -x "$vendored" ] || fail "self-test: --render created a vendored script with the executable bit"
