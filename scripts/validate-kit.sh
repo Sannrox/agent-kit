@@ -6,6 +6,10 @@ cd "$ROOT"
 fail() { printf 'agent-kit validation failed: %s\n' "$1" >&2; exit 1; }
 require_line() { grep -Fqx "$2" "$1" || fail "$1 is missing canonical line: $2"; }
 
+# The kit uses its own canonical skills through the same link chain consumers use.
+[ "$(readlink .agents/skills)" = ../skills ] || fail ".agents/skills must be a symlink to ../skills"
+[ "$(readlink .claude/skills)" = ../.agents/skills ] || fail ".claude/skills must be a symlink to ../.agents/skills"
+
 for f in skills/*/SKILL.md; do
   n="$(basename "$(dirname "$f")")"
   [ "$(sed -n 1p "$f")" = "---" ] || fail "$f has no frontmatter"
