@@ -103,7 +103,7 @@ flowchart TD
     script --> dep{"Dependency state"}
     dep -->|"anomalous: missing reference,<br/>self-dependency, cycle"| anomaly["Keep blocked, report the evidence"]
     dep -->|"blocked"| blockedIssue["Blocked: list the open dependencies"]
-    dep -->|"judgment: prose, Pull Request reference,<br/>closed without completion"| judge{"Closure consistent with<br/>the dependency wording?"}
+    dep -->|"judgment: prose, Pull Request reference,<br/>closed without completion"| judge{"Closure, or a stated completion,<br/>consistent with live state?"}
     judge -->|"no"| blockedIssue
     judge -->|"yes"| claim
     dep -->|"ready"| claim{"Claim on GitHub?"}
@@ -122,9 +122,9 @@ flowchart TD
     queue --> mutate
     seq --> mutate
     par --> mutate{"Did you authorize<br/>Issue updates?"}
-    mutate -->|"no"| report(["Frontier report, nothing changed"])
+    mutate -->|"no"| report(["Frontier report in the session, nothing changed"])
     mutate -->|"yes"| apply["frontier.sh --apply relabels status:ready<br/>and status:blocked, then re-reads"]
-    apply --> report2(["Frontier report plus every Issue it changed"])
+    apply --> report2(["Frontier report in the session,<br/>plus every Issue it changed"])
 ```
 
 It never claims a lane, starts a branch, assigns anyone, or picks priority.

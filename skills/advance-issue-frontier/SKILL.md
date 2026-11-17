@@ -67,7 +67,11 @@ Requests. Do not rely on a stale local backlog export.
      is consistent with the dependency wording; if it was closed as unplanned
      or superseded, require evidence that the dependent outcome remains valid;
    - treat textual gates such as an active predecessor or external decision as
-     blocking until the Issue explicitly records them as delivered.
+     blocking until the Issue explicitly records them as delivered;
+   - treat an explicit statement that named prerequisites are complete as
+     delivered evidence, but only when every referenced Issue or Pull Request
+     agrees (closed as completed, or merged). A statement that contradicts
+     live state is an anomaly, not evidence.
 4. Keep `anomalous` Issues blocked and report the anomaly and contradictory
    status rather than guessing.
 
@@ -135,7 +139,8 @@ is available.
 
 ## Report the frontier
 
-Return:
+Return the report to the maintainer in the session, never as an Issue, Pull
+Request, or Discussion comment:
 
 - trigger and mutation authority;
 - newly unblocked Issues;
