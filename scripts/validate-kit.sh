@@ -489,6 +489,30 @@ jq -se --arg t "$T" --arg c "$copy" 'map(select(.query | contains("updateRefs"))
   || fail "self-test: push --rebased did not clear the scratch branch before and after"
 [ "$(rg rev-parse HEAD)" = "$copy" ] || fail "self-test: push --rebased left HEAD off the new Pull Request head"
 
+# Self-test (#39): the first push of a lane rebased onto a newer main, while
+# the claim branch still sits at the old claim base C, publishes on main, not
+# on C, without --rebased; the Pull Request then holds only the lane's work.
+C="$(rg rev-parse main^)"
+rg checkout -q -B feat/7 main && printf 'k\n' > "$land/repo/k" && rg add k && rg commit -qm "lane on new main"
+rg rev-parse 'HEAD^{tree}' > "$land/tree"
+copy="$(rg commit-tree "$(cat "$land/tree")" -p "$(cat "$land/default_sha")" -m published)"
+echo "$C" > "$land/branch_sha"; : > "$land/calls"; : > "$land/graphql_in"
+{ printf '{"data":{"createCommitOnBranch":{"commit":{"oid":"%s","url":null}}}}\n' "$copy"
+  echo '{"data":{"updateRefs":{"clientMutationId":null}}}'; } > "$land/seq"
+lane 0 "$land/repo" push 7
+jq -se --arg main "$(cat "$land/default_sha")" 'map(select(.query | contains("createCommitOnBranch")))[0].variables.input.expectedHeadOid == $main' \
+  "$land/graphql_in" >/dev/null || fail "self-test: first push of a rebased lane published on the old claim base: $out"
+jq -se --arg c "$C" --arg p "$copy" 'map(select(.query | contains("updateRefs")))[0].variables.input.refUpdates
+  == [{name: "refs/heads/feat/7", beforeOid: $c, afterOid: $p, force: true}]' "$land/graphql_in" >/dev/null \
+  || fail "self-test: first push of a rebased lane did not move the claim branch guarded by the claim base"
+# A checkout older than the claim tip is stale, not rebased: it is refused.
+cat "$land/default_sha" > "$land/branch_sha"
+rg checkout -q -B feat/7 "$C"
+printf 'old\n' > "$land/repo/k" && rg add k && rg commit -qm "lane on old base"
+: > "$land/calls"
+lane 1 "$land/repo" push 7
+if grep -q POST "$land/calls"; then fail "self-test: push moved the claim branch back onto an older base"; fi
+
 # Self-test: takeover moves the lane to the caller and touches neither the
 # branch nor a Pull Request. The lane worktree is $land/repo (feat/7 is
 # checked out there); its files are fresh until age_lane backdates them.
