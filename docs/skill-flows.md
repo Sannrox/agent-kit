@@ -192,9 +192,12 @@ flowchart TD
 flowchart TD
     start(["Verified, reviewed change"]) --> base{"main is an ancestor<br/>of the branch?"}
     base -->|"no"| refresh["Refresh onto main,<br/>rerun affected checks"]
-    refresh --> push
-    base -->|"yes"| push["issue-lane.sh push, draft Pull Request,<br/>then mark it ready"]
-    push --> ceiling{"Ceiling"}
+    refresh --> precheck
+    base -->|"yes"| precheck[["verify-change on the<br/>committed candidate"]]
+    precheck --> push["issue-lane.sh push"]
+    push --> postcheck[["verify-change on the published SHA"]]
+    postcheck --> pr["Draft Pull Request,<br/>then mark it ready"]
+    pr --> ceiling{"Ceiling"}
     ceiling -->|"Publish"| url(["Stop: returns the Pull Request URL"])
     ceiling -->|"Land"| land["issue-lane.sh land watches the checks and<br/>squash-merges pinned to the reviewed head"]
     land --> result{"Result"}
