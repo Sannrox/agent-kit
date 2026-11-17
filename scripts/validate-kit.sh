@@ -261,6 +261,18 @@ printf '%s\n' "$out" | grep -q 'files changed: 3$' || fail "self-test: fixture s
 printf '%s\n' "$out" | grep -q '^Warning: new-exec.sh is 100755' || fail "self-test: no warning for added new-exec.sh: $out"
 printf '%s\n' "$out" | grep -q '^Warning: plain.sh is 100755' || fail "self-test: no warning for plain.sh made 100755: $out"
 if printf '%s\n' "$out" | grep -q '^Warning: old-exec.sh'; then fail "self-test: modified old-exec.sh keeps 100755 and needs no warning: $out"; fi
+# #63: adding a symlink, or retyping a path to or from one, is refused before
+# any GitHub call, naming the path; deleting one is publishable.
+dry_push() { (cd "$push/repo" && PATH="$push/bin:$PATH" bash "$ROOT/scripts/gh-verified-push.sh" \
+  --repo o/r --branch b --expected-oid "$1" --dry-run 2>&1); }
+base="$(g rev-parse HEAD)"; ln -s plain.sh "$push/repo/link" && g add link && g commit -qm link
+if out="$(dry_push "$base")"; then fail "self-test: gh-verified-push accepted a symlink addition: $out"; fi
+printf '%s\n' "$out" | grep -q '^Refusing link: .*symlink' || fail "self-test: symlink refusal did not name the path: $out"
+base="$(g rev-parse HEAD)"; rm "$push/repo/link" && printf 'x\n' > "$push/repo/link" && g add link && g commit -qm retype
+if out="$(dry_push "$base")"; then fail "self-test: gh-verified-push accepted a symlink retyped to a file: $out"; fi
+printf '%s\n' "$out" | grep -q '^Refusing link: ' || fail "self-test: type-change refusal did not name the path: $out"
+base="$(g rev-parse HEAD~1)"; g rm -q link && g commit -qm "drop link"
+out="$(dry_push "$base")" || fail "self-test: gh-verified-push refused deleting a symlink: $out"
 
 # Self-test: issue-lane.sh against a fake gh. Each `gh pr view` serves the
 # next Pull Request snapshot (the last one repeats); mutations are recorded.

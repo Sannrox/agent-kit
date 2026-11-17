@@ -33,7 +33,8 @@ consumers (byte-for-byte). `scripts/gh-verified-push.sh` stays here as the
 canonical publisher for GitHub-signed commits. Lanes run it from the kit
 through `issue-lane.sh push`, never from a copy; a repository that publishes
 with `git push` says so in `AGENTS.md`. It cannot carry file modes: a
-100755 file lands as 100644, and the script warns for each one. Run scripts
+100755 file lands as 100644, and the script warns for each one. It cannot
+carry symlinks either, so it refuses a change that adds or retypes one. Run scripts
 through their interpreter (`sh`, `bash`, `python3`); checks never require the
 executable bit.
 

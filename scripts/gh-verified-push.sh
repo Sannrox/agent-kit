@@ -270,6 +270,32 @@ build_deletions() {
   printf ']'
 }
 
+# createCommitOnBranch has no file type: a symlink would land as a regular
+# file holding its target. Print every path between $1 and $2 that adds,
+# edits, or retypes a symlink, or otherwise changes type; deleting a symlink
+# is expressible and passes.
+unpublishable_paths() {
+  local meta fpath old_mode new_mode status
+  while IFS= read -r -d '' meta && IFS= read -r -d '' fpath; do
+    old_mode=${meta#:}
+    old_mode=${old_mode%% *}
+    new_mode=${meta#* }
+    new_mode=${new_mode%% *}
+    status=${meta##* }
+    if [ "$status" = T ] || { [ "$status" != D ] && { [ "$old_mode" = 120000 ] || [ "$new_mode" = 120000 ]; }; }; then
+      printf '%s\n' "$fpath"
+    fi
+  done < <(git diff --raw --no-renames -z "$1" "$2")
+}
+
+unpublishable=$(unpublishable_paths "$base_oid" HEAD)
+if [ -n "$unpublishable" ]; then
+  while IFS= read -r fpath; do
+    echo "Refusing $fpath: it adds, edits, or retypes a symlink (or changes file type), which createCommitOnBranch cannot express." >&2
+  done <<< "$unpublishable"
+  exit 1
+fi
+
 additions=$(build_additions)
 deletions=$(build_deletions)
 
@@ -373,9 +399,10 @@ if [ -n "$new_url" ] && [ "$new_url" != "null" ]; then
   echo "URL: $new_url" >&2
 fi
 
-# Confirm hosted blob contents match local HEAD. createCommitOnBranch does not
-# preserve executable mode (warned above), so full tree SHAs can differ even
-# when file contents are identical.
+# Confirm the hosted tree matches local HEAD path by path: same type, blob,
+# and mode. createCommitOnBranch does not preserve the executable bit (warned
+# above), so a local 100755 file may be 100644 on GitHub; any other mode or
+# type difference fails, so a type change can never report success.
 verify_json=$(gh api "repos/${repo}/git/commits/${new_oid}")
 remote_tree=$(printf '%s' "$verify_json" | jq -r .tree.sha)
 if [ "$remote_tree" = "$head_tree" ]; then
@@ -384,16 +411,22 @@ else
   echo "Hosted tree ${remote_tree} differs from local HEAD tree ${head_tree}; checking content..." >&2
   git fetch "https://github.com/${repo}.git" "+${new_oid}:refs/gh-verified-push/remote-tip" 2>/dev/null \
     || git fetch origin "+${new_oid}:refs/gh-verified-push/remote-tip"
-  local_blobs=$(git ls-tree -r HEAD | awk '{print $3 "\t" $4}' | sort)
-  remote_blobs=$(git ls-tree -r refs/gh-verified-push/remote-tip | awk '{print $3 "\t" $4}' | sort)
-  if [ "$local_blobs" != "$remote_blobs" ]; then
-    echo "Hosted blob contents do not match local HEAD." >&2
-    diff -u <(printf '%s\n' "$local_blobs") <(printf '%s\n' "$remote_blobs") >&2 || true
+  listing() { git ls-tree -r --format='%(path)%x09%(objectmode) %(objecttype) %(objectname)' "$1"; }
+  if ! awk -F '\t' '
+      NR == FNR { remote[$1] = $2; n++; next }
+      { split(remote[$1], r, " "); split($2, l, " ")
+        if (!($1 in remote) || r[2] != l[2] || r[3] != l[3] \
+          || (r[1] != l[1] && !(l[1] == "100755" && r[1] == "100644"))) bad = 1
+        m++ }
+      END { exit (bad || m != n) }' \
+      <(listing refs/gh-verified-push/remote-tip) <(listing HEAD); then
+    echo "Hosted tree does not match local HEAD (path, type, blob, or mode)." >&2
+    diff -u <(listing HEAD) <(listing refs/gh-verified-push/remote-tip) >&2 || true
     git update-ref -d refs/gh-verified-push/remote-tip 2>/dev/null || true
     exit 1
   fi
   git update-ref -d refs/gh-verified-push/remote-tip 2>/dev/null || true
-  echo "Hosted blob contents match local HEAD." >&2
+  echo "Hosted tree matches local HEAD apart from executable bits." >&2
 fi
 
 verification=$(gh api "repos/${repo}/commits/${new_oid}" --jq '.commit.verification.verified // false')
