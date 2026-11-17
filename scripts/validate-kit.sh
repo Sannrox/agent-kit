@@ -99,6 +99,27 @@ if bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null 2>&1; then fail "sel
 bash scripts/check-consumer.sh "$ROOT" "$tmp" --render >/dev/null
 bash scripts/check-consumer.sh "$ROOT" "$tmp" >/dev/null
 
+# Self-test (#64): the vendored wrapper checks against the latest main of an
+# existing kit checkout. A checkout on another branch keeps its branch and
+# commit; one on main fast-forwards. The fixture kit's origin holds this
+# tree on main; the feature branch drops check-consumer.sh, so only a check
+# against main passes.
+kfx="$(mktemp -d "${TMPDIR:-/tmp}/agent-kit-wrapper.$$.XXXXXX")"; trap 'rm -rf "$tmp" "$kfx"' EXIT
+kg() { git -C "$1" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "${@:2}"; }
+mkdir "$kfx/origin" && git ls-files -z | xargs -0 tar -cf - | tar -xf - -C "$kfx/origin"
+kg "$kfx/origin" init -q -b main && kg "$kfx/origin" add -A && kg "$kfx/origin" commit -qm kit
+git clone -q "$kfx/origin" "$kfx/kit"
+kg "$kfx/kit" checkout -q -b feature && kg "$kfx/kit" rm -q scripts/check-consumer.sh && kg "$kfx/kit" commit -qm "drop check"
+feature="$(kg "$kfx/kit" rev-parse HEAD)"
+wrap() { AGENT_KIT_HOME="$kfx/kit" bash "$tmp/scripts/validate-workflow-skills.sh" 2>&1; }
+out="$(wrap)" || fail "self-test: the wrapper did not check a feature-branch kit against main: $out"
+[ "$(kg "$kfx/kit" symbolic-ref --short HEAD)" = feature ] && [ "$(kg "$kfx/kit" rev-parse HEAD)" = "$feature" ] \
+  || fail "self-test: the wrapper moved the kit checkout off its branch"
+kg "$kfx/kit" checkout -q main && kg "$kfx/origin" commit -q --allow-empty -m newer
+out="$(wrap)" || fail "self-test: the wrapper failed on a kit checkout on main: $out"
+[ "$(kg "$kfx/kit" rev-parse HEAD)" = "$(kg "$kfx/origin" rev-parse HEAD)" ] || fail "self-test: the wrapper did not fast-forward a kit checkout on main"
+rm -rf "$kfx"
+
 # Self-test: frontier.sh against a fake gh serving fixture Issues of o/r.
 # Referenced Issues: 1 completed, 2 open, 3 not planned, x/y#4 completed in
 # another repository, 404 missing. Relabels are recorded in calls.
