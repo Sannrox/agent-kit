@@ -43,7 +43,7 @@ force-pushing protected branches, or weakening repository protections.
    `advance-issue-frontier` before starting.
 2. Read the repository instructions, the Issue, linked decisions, and the live
    Pull Request and Issue state.
-3. Read `## GitHub dependencies` literally, including cross-repository
+3. Read `## GitHub dependencies` (or `## Dependencies`) literally, including cross-repository
    predecessors (`Sannrox/<repo>#<n>`, for example an upstream release this
    change pins). Treat an open predecessor or an unresolved non-Issue
    dependency as blocking.

@@ -2,8 +2,10 @@
 # Compute the dependency frontier of a repository's open Issues and, with
 # --apply, keep their status:ready / status:blocked labels true.
 #
-# Dependencies come only from each Issue's "## GitHub dependencies" section
-# ("### GitHub dependencies" in Issue forms); it ends at the next heading.
+# Dependencies come only from each Issue's "## GitHub dependencies" or
+# "## Dependencies" section ("###" in Issue forms, any case); it ends at the
+# next heading. When both are present, "GitHub dependencies" wins and the
+# verdict says so.
 # The section is machine-evaluable only when it is exactly "none" or a plain
 # list of references, one per line:
 #   - #12            - Owner/repo#34 (delivered)
@@ -71,8 +73,8 @@ issues="$(gh issue list -R "$repo" --state open --limit 1000 --json number,title
 # A full page means the list may be truncated; never act on a partial view.
 [ "$(jq length <<< "$issues")" -lt 1000 ] || fail "${repo} has 1000 or more open Issues; the list may be truncated"
 
-# Parse each Issue's dependency section into {kind, refs}. kind is none,
-# refs, prose, or missing.
+# Parse each Issue's dependency section into {kind, refs, both}. kind is
+# none, refs, prose, or missing; both marks a body with both headings.
 parsed="$(jq -c --arg repo "$repo" '
   # capture yields nothing on a mismatch, so callers test is_ref first.
   def ref_re: "^[-*]\\s+(?:https://github\\.com/(?<u>[^/\\s]+/[^/\\s]+)/issues/|(?<r>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#)(?<n>[0-9]+)(?:\\s+\\(delivered\\))?\\s*$";
@@ -81,13 +83,15 @@ parsed="$(jq -c --arg repo "$repo" '
     $line | capture(ref_re) | {repo: (.u // .r // $repo), number: (.n | tonumber)};
   map(
     ((.body // "") | gsub("\r"; "") | split("\n")) as $lines
-    | ([$lines | to_entries[] | select(.value | test("^###?\\s+GitHub dependencies\\s*$"; "i")) | .key] | first) as $at
+    | ([$lines | to_entries[] | select(.value | test("^###?\\s+GitHub dependencies\\s*$"; "i")) | .key] | first) as $gh
+    | ([$lines | to_entries[] | select(.value | test("^###?\\s+Dependencies\\s*$"; "i")) | .key] | first) as $plain
+    | ($gh // $plain) as $at
     | (if $at == null then null else
         [$lines[($at + 1):][]] as $rest
         | ([$rest | to_entries[] | select(.value | test("^#")) | .key] | first // ($rest | length)) as $end
         | [$rest[:$end][] | gsub("^\\s+|\\s+$"; "") | select(. != "")]
       end) as $section
-    | {number, title, labels: [.labels[].name]}
+    | {number, title, labels: [.labels[].name], both: ($gh != null and $plain != null)}
       + (if $section == null then {kind: "missing", refs: []}
          elif ($section | length) == 1 and ($section[0] | test("^([-*]\\s+)?none\\.?$"; "i")) then {kind: "none", refs: []}
          elif ($section | length) > 0 and all($section[]; is_ref) then {kind: "refs", refs: [$section[] | ref_of(.)]}
@@ -115,14 +119,15 @@ report="$(jq -c --arg repo "$repo" --argjson res "$resolved" '
   def keys_of($state): [.deps[] | select(.state == $state) | .key] | join(", ");
   map(. as $i
     | . + {deps: [.refs[] | . + {key: key} + $res[key]]}
-    | if .kind == "missing" then . + {state: "judgment", why: "no GitHub dependencies section"}
+    | if .kind == "missing" then . + {state: "judgment", why: "no \"GitHub dependencies\" or \"Dependencies\" section"}
       elif .kind == "prose" then . + {state: "judgment", why: "dependency section is prose"}
       elif any(.deps[]; .repo == $repo and .number == $i.number) then . + {state: "anomalous", why: "depends on itself"}
       elif any(.deps[]; .state == "missing") then . + {state: "anomalous", why: "missing \(keys_of("missing"))"}
       elif any(.deps[]; .pr) then . + {state: "judgment", why: "references a Pull Request: \([.deps[] | select(.pr) | .key] | join(", "))"}
       elif any(.deps[]; .state == "closed" and .reason != "completed") then . + {state: "judgment", why: "closed without completion: \([.deps[] | select(.state == "closed" and .reason != "completed") | .key] | join(", "))"}
       elif any(.deps[]; .state == "open") then . + {state: "blocked", why: "waits on \(keys_of("open"))"}
-      else . + {state: "ready", why: (if .deps == [] then "no dependencies" else "all delivered" end)} end)
+      else . + {state: "ready", why: (if .deps == [] then "no dependencies" else "all delivered" end)} end
+    | if .both then .why += " (read \"GitHub dependencies\", ignored \"Dependencies\")" else . end)
   # Drain blocked Issues whose open same-repository dependencies are all
   # drained or outside the graph; whatever never drains is in or behind a cycle.
   | (map(select(.state == "blocked"))
@@ -163,7 +168,7 @@ fi
 
 if [ "$json_output" = true ]; then
   jq --arg repo "$repo" --argjson applied "$apply" \
-    '{repo: $repo, applied: $applied, issues: map(del(.body, .kind, .refs))}' <<< "$report"
+    '{repo: $repo, applied: $applied, issues: map(del(.body, .kind, .refs, .both))}' <<< "$report"
   exit 0
 fi
 jq -r --arg repo "$repo" --argjson applied "$apply" '
