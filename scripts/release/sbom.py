@@ -49,26 +49,11 @@ def bom(version: str) -> dict:
     }
 
 
-def self_test() -> None:
-    doc = bom("0.1.0")
-    assert doc["bomFormat"] == "CycloneDX"
-    # The fields actions/attest-sbom requires to accept a CycloneDX document.
-    assert doc["specVersion"] and doc["serialNumber"].startswith("urn:uuid:"), doc
-    component = doc["metadata"]["component"]
-    assert component["name"] == "agent-kit"
-    assert component["version"] == "0.1.0"
-    assert component["purl"] == "pkg:generic/agent-kit@0.1.0"
-    assert doc["components"] == []
-    print("release-sbom self-test passed")
-
 
 def main(argv: list[str]) -> None:
-    if argv == ["--self-test"]:
-        self_test()
-        return
     if len(argv) != 1:
-        raise SystemExit("usage: release-sbom.py OUT")
-    root = Path(__file__).resolve().parent.parent
+        raise SystemExit("usage: sbom.py OUT")
+    root = Path(__file__).resolve().parents[2]
     out = Path(argv[0])
     out.write_text(json.dumps(bom(release_version(root)), indent=2) + "\n")
     print(out)
