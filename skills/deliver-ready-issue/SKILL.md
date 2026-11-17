@@ -168,6 +168,8 @@ mark the Issue unless documented maintainer policy requires it.
 3. Run `verify-change` and retain exact commands, results, skips, and remaining
    uncertainty. At minimum for ship: the local gates listed in `AGENTS.md`
    (and the matching jobs in `.github/workflows/ci.yml`). Do not assume Cargo.
+   Results from a dirty worktree are provisional: step 5 verifies the
+   committed and the published candidate again.
 4. Run **`autoreview` before committing** (or before push if already committed).
    Do **not** vendor the skill into this repo. Resolve the shared helper (env
    `AUTOREVIEW`, else agent-skills / `AGENTS_HOME` / shared install path—see
@@ -209,6 +211,8 @@ mark the Issue unless documented maintainer policy requires it.
    the branch onto `main` and rerun the affected checks. Otherwise refresh only
    for a failing gate, an explicit request, or a sibling lane that landed on a
    shared surface (listed as collision surfaces in `## Parallel delivery lanes` in `AGENTS.md`). Do not rebase merely because `main` advanced.
+   Run `verify-change` again on the committed candidate, on a clean tree,
+   before publishing.
 2. Publish the claim branch from the lane worktree:
 
    ```sh
@@ -233,7 +237,9 @@ mark the Issue unless documented maintainer policy requires it.
    claim branch holds no lane commits yet, takes that path by itself, so the
    Pull Request never re-adds what `main` gained since the claim. Confirm it reports `verification.verified=true`. Publish
    with `git push` instead only when `AGENTS.md` (`### Verified commits on
-   GitHub`) says the repository does, or the user asks.
+   GitHub`) says the repository does, or the user asks. After `push` syncs
+   the worktree, run `verify-change` once more on the published SHA (local
+   `HEAD`); its results are the ones the Pull Request reports.
 3. Open the Pull Request as a draft with the first published commit, then mark
    it ready once verification and review are complete and `mergeable` is no
    longer `UNKNOWN` (`gh pr ready <pr>`). The Pull Request:
