@@ -199,7 +199,7 @@ flowchart TD
     postcheck --> pr["Draft Pull Request,<br/>then mark it ready"]
     pr --> ceiling{"Ceiling"}
     ceiling -->|"Publish"| url(["Stop: returns the Pull Request URL"])
-    ceiling -->|"Land"| land["issue-lane.sh land watches the checks and<br/>squash-merges pinned to the reviewed head"]
+    ceiling -->|"Land"| land["issue-lane.sh land waits for the required checks and<br/>squash-merges pinned to the reviewed head"]
     land --> result{"Result"}
     result -->|"head moved"| rereview["Review the new head"]
     result -->|"timed out"| again["Not mergeable yet:<br/>keep watching"]

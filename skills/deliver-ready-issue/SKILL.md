@@ -268,7 +268,9 @@ mark the Issue unless documented maintainer policy requires it.
    ```
 
    Like `push`, it refuses (exit 3) a lane that is not yours unless the
-   maintainer approved `--yes`. It watches the checks, then squash-merges with local `HEAD` as the merge
+   maintainer approved `--yes`. It watches the checks until every required
+   check passes (every check when the repository requires none), naming any
+   optional check still running, then squash-merges with local `HEAD` as the merge
    precondition (pass `--head <sha>` for another reviewed commit), so GitHub
    refuses the merge if the head moved. It succeeds only once the default
    branch contains the merge and the Issue closed, and only then deletes the
@@ -321,7 +323,9 @@ Landing rules:
   emergency fixed in its own change first. Name inherited failures in the
   Pull Request. `land` blocks on any failed check; pass
   `--accept-failed "<check>"` for each inherited failure of a check that is
-  not required. A failed required check never lands.
+  not required. A failed required check never lands. An optional check that
+  fails after the merge is classified the same way on `main`; a repository
+  that wants a slow check to gate merges marks it required.
 - A failure that does not reproduce and is unrelated to the change is a flaky
   test: open an Issue with the failing output before any rerun, and fix the
   flake rather than rerunning it again.

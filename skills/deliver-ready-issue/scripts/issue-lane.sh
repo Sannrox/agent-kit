@@ -58,7 +58,7 @@
 # (run push --rebased again); a crash after it is adopted by the next push.
 #
 # land withdraws any queued auto-merge, watches the Pull Request until its
-# checks settle, then squash-merges it through the REST merge endpoint with the
+# required checks pass (every check when none is required), then squash-merges it through the REST merge endpoint with the
 # reviewed head (local HEAD unless --head is given) as the precondition, so
 # GitHub refuses the merge if the head moved. It never queues auto-merge or a
 # merge queue entry: a queued request survives later pushes, so it could land
@@ -606,9 +606,13 @@ land_pr_json() {
       | del(.commits)'
 }
 
-# Summarize the checks of a Pull Request snapshot: the pending count and the
-# failed checks that block. A failed required check always blocks; a failed
-# optional check blocks unless --accept-failed names it as inherited.
+# Summarize the checks of a Pull Request snapshot: the pending count that holds
+# the merge, the optional checks still pending, and the failed checks that
+# block. When any check is required, only pending required checks hold the
+# merge: the repository's required checks say what gates it. With no required
+# check, every pending check holds it, so an unprotected branch never merges
+# before CI. A failed required check always blocks; a failed optional check
+# blocks unless --accept-failed names it as inherited.
 land_checks() {
   printf '%s' "$1" | jq -c --argjson accepted "$accepted_failures" '
     [.statusCheckRollup[]? | {
@@ -618,7 +622,9 @@ land_checks() {
       failed: (((.conclusion // "") | IN("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"))
         or ((.state // "") | IN("FAILURE", "ERROR")))
     }]
-    | {pending: map(select(.pending)) | length,
+    | any(.[]; .required) as $gated
+    | {pending: map(select(.pending and (.required or ($gated | not)))) | length,
+       optional_pending: [.[] | select(.pending and ($gated and (.required | not))) | .name],
        failed: [.[] | select(.failed and (.required or (.name | IN($accepted[]) | not))) | .name],
        accepted: [.[] | select(.failed and (.required | not) and (.name | IN($accepted[]))) | .name]}'
 }
@@ -1044,11 +1050,14 @@ case "$command_name" in
           exit 5
           ;;
         CLEAN | HAS_HOOKS | UNSTABLE)
-          # UNSTABLE means only optional checks failed; reaching here, each one
-          # was accepted, or the failed-checks guard above would have stopped.
+          # UNSTABLE means only optional checks failed or are still pending;
+          # reaching here, each failed one was accepted, or the failed-checks
+          # guard above would have stopped.
           if [ "$pending" -eq 0 ]; then
             accepted="$(printf '%s' "$checks" | jq -r '.accepted | join(", ")')"
             [ -z "$accepted" ] || printf 'issue-lane: landing #%s over accepted inherited failures: %s\n' "$land_pr" "$accepted" >&2
+            optional_pending="$(printf '%s' "$checks" | jq -r '.optional_pending | join(", ")')"
+            [ -z "$optional_pending" ] || printf 'issue-lane: landing #%s while optional checks still run: %s\n' "$land_pr" "$optional_pending" >&2
             title="$(printf '%s' "$snapshot" | jq -r .title)"
             # The REST merge either merges now or fails; it never queues. The
             # reviewed head is its precondition, so a moved head is refused.
