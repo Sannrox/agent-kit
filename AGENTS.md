@@ -170,10 +170,11 @@ Local isolation protects lanes that share a machine; it is not a claim.
 
 ### Limits, collisions, and landing
 
-The three-lane limit counts claims visible on GitHub per repository: open
-implementation Pull Requests plus claim branches without one
+The three-lane limit counts lanes in progress visible on GitHub per
+repository: draft implementation Pull Requests plus claim branches without one
 (`bash skills/deliver-ready-issue/scripts/issue-lane.sh capacity`); `claim`
-refuses when none is free. Assigned or
+refuses when none is free. A ready Pull Request has finished verification and
+review and only waits on CI and the merge, so it does not count. Assigned or
 planned work with neither is not a running lane.
 
 Parallel lanes must not collide. Collision surfaces in this repository are
