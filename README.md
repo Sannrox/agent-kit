@@ -24,6 +24,7 @@ hand-copying long `SKILL.md` files.
 | `ci-audit` | opt-in | Report what each CI job costs and catches from run history (`scripts/ci-report.sh`); gate every new job |
 | `ui-e2e` | opt-in | UI proof: direction mocks, states gallery, mock-backend browser tests, screenshots, live journeys |
 | `api-e2e` | opt-in | API proof: wire-contract drift and compatibility gate, boundary tests against a real listener, crash and restart check |
+| `tui-e2e` | opt-in | Terminal UI proof: text mocks, headless state snapshots, per-state key map, pseudo-terminal tests, screen rules, crash and resume |
 
 [Skill flows](docs/skill-flows.md) diagrams what each skill decides, where it
 stops, and which skills it calls.
@@ -91,6 +92,7 @@ repository's `AGENTS.md`:
 | impact boundaries not covered above | optional `### Additional impact boundaries` |
 | UI commands, mocks and design constraints (`ui-e2e`) | optional `### UI proof` |
 | API contract source, drift check, test command and server fixture (`api-e2e`) | optional `### API proof` |
+| TUI test command, snapshot accept command, pseudo-terminal driver, scripted backend and terminal sizes (`tui-e2e`) | optional `### TUI proof` |
 
 `## Agent skill profile` holds only what the other sections do not already say
 (see `templates/agent-skill-profile.md`); its headings are a contract checked in

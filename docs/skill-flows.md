@@ -48,8 +48,8 @@ flowchart TD
     merged -->|"when you ask for a release"| release[["prepare-release"]]
 ```
 
-Six skills stand apart from the Issue flow and run when you call them:
-`improve-performance`, `ci-audit`, `ui-e2e`, `api-e2e`,
+Seven skills stand apart from the Issue flow and run when you call them:
+`improve-performance`, `ci-audit`, `ui-e2e`, `api-e2e`, `tui-e2e`,
 `technical-documentation`, and `refactor-docs` (which loads
 `technical-documentation` first).
 
@@ -570,6 +570,33 @@ flowchart TD
     durable -->|"yes"| crash["Stage 3: kill with a write in flight and restart,<br/>readiness, version overlap, takeover and fencing<br/>where an instance owns work exclusively"]
     durable -->|"no"| out
     crash --> out(["Report: stages run and skipped, drift result,<br/>version pairs proven, test results, what mocks cannot prove"])
+```
+
+## tui-e2e
+
+Call it for terminal UI work. It picks stages by the kind of change, and the
+direction stage always stops for your pick.
+
+```mermaid
+flowchart TD
+    start(["A terminal UI change"]) --> kind{"What kind of change?"}
+    kind -->|"new screen or redesign"| mocks["Stage 1: two or three distinct text mocks<br/>with empty, working, prompt, and failure states"]
+    kind -->|"key-handling fix"| keys
+    kind -->|"copy tweak"| states
+    mocks --> pickStop(["Stop: waits for your pick"])
+    pickStop -->|"you pick one"| states["Stage 2: headless snapshots of each touched state<br/>at standard and narrow sizes, read before accepted"]
+    states --> behaves{"Changes keys<br/>or behavior?"}
+    behaves -->|"yes"| keys["Stage 3: key map per state,<br/>a test for every changed row"]
+    behaves -->|"no"| rules
+    keys --> pty["Stage 4: built program in a pseudo-terminal, scripted backend,<br/>wait on the screen, terminal restored after exit"]
+    pty --> rules["Stage 5: screen rules on every capture<br/>through one shared helper"]
+    rules --> durable{"Keeps or resumes<br/>durable sessions?"}
+    durable -->|"yes"| crash["Stage 6: kill mid-turn and restart,<br/>visible resume, second instance"]
+    durable -->|"no"| gate
+    crash --> gate{"Changes what<br/>the screen shows?"}
+    gate -->|"yes"| captures["Before and after text captures<br/>in the Pull Request"]
+    gate -->|"no"| out
+    captures --> out(["Report: stages run and skipped, pick,<br/>states and sizes, key rows, scenarios, untested states"])
 ```
 
 ## technical-documentation
