@@ -31,10 +31,12 @@
 # other takeover needs --yes. The new owner continues in that worktree,
 # uncommitted work included.
 #
-# capacity counts live lanes repository-wide against the lane limit
-# (ISSUE_LANE_LIMIT, default 3): open Pull Requests from claim branches plus
-# claim branches without one whose Issue is open. A claim branch whose Issue is
-# closed or whose Pull Request merged is stale: reported, never counted. claim
+# capacity counts lanes in progress repository-wide against the lane limit
+# (ISSUE_LANE_LIMIT, default 3): draft Pull Requests from claim branches plus
+# claim branches without one whose Issue is open. A ready Pull Request has
+# finished verification and review and only waits on CI and the merge: it is
+# reported as landing, never counted. A claim branch whose Issue is closed or
+# whose Pull Request merged is stale: reported, never counted. claim
 # refuses when no capacity remains, and deletes its new branch again if a
 # concurrent claim pushed the repository over the limit.
 #
@@ -185,18 +187,21 @@ lane_token="${LANE_TOKEN:-}"
 CLAIM_BRANCH_RE='^[^/]+/[0-9]+(-[^/]*)?$'
 
 # Lane capacity from four JSON listings read on stdin, in order: branches
-# ({name, sha}), open Pull Requests ({number, headRefName, closes}: closes
-# counts the Issues it closes), open Issues ({number}), and merged Pull Request
-# heads ({headRefName, sha}). They come through stdin, not arguments, because
-# a long history outgrows the argument size limit. An open Pull Request is an
-# implementation lane when its head is a claim branch or it closes an Issue. A
-# merged head only makes a branch stale while the branch still points at it; a
-# recreated branch is a new claim.
+# ({name, sha}), open Pull Requests ({number, headRefName, closes, isDraft}:
+# closes counts the Issues it closes), open Issues ({number}), and merged Pull
+# Request heads ({headRefName, sha}). They come through stdin, not arguments,
+# because a long history outgrows the argument size limit. An open Pull Request
+# is an implementation lane when its head is a claim branch or it closes an
+# Issue; it counts while it is a draft (or its draft state is unknown) and is
+# landing once ready. A merged head only makes a branch stale while the branch
+# still points at it; a recreated branch is a new claim.
 capacity_from_json() {
   jq -s --argjson limit "$LANE_LIMIT" --arg re "$CLAIM_BRANCH_RE" '
     def issue_of: capture("^[^/]+/(?<n>[0-9]+)") | .n | tonumber;
     . as [$branches, $prs, $open_issues, $merged]
-    | [$prs[] | select((.headRefName | test($re)) or .closes > 0) | {number, headRefName}] as $lane_prs
+    | [$prs[] | select((.headRefName | test($re)) or .closes > 0)] as $all_lane_prs
+    | [$all_lane_prs[] | select(.isDraft != false) | {number, headRefName}] as $lane_prs
+    | [$all_lane_prs[] | select(.isDraft == false) | {number, headRefName}] as $landing_prs
     | [$prs[].headRefName] as $pr_heads
     | [$open_issues[].number] as $open
     | [$branches[] | select((.name | test($re)) and (.name as $n | $pr_heads | index($n) | not))] as $bare
@@ -205,7 +210,8 @@ capacity_from_json() {
     | [$bare[] | .name | select(. as $n | $stale | index($n) | not)] as $orphans
     | ($lane_prs | length) + ($orphans | length) as $used
     | {limit: $limit, used: $used, remaining: ([$limit - $used, 0] | max),
-       implementation_prs: $lane_prs, orphan_claim_branches: $orphans, stale_claim_branches: $stale}'
+       implementation_prs: $lane_prs, landing_prs: $landing_prs,
+       orphan_claim_branches: $orphans, stale_claim_branches: $stale}'
 }
 
 # Fetch the four listings from GitHub. Returns non-zero when any listing fails,
@@ -214,8 +220,8 @@ live_capacity_json() {
   {
     gh api "repos/${repo}/git/matching-refs/heads/" --paginate \
       | jq -sc '[.[][] | {name: (.ref | ltrimstr("refs/heads/")), sha: .object.sha}]' || exit 1
-    gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName,closingIssuesReferences \
-      --jq '[.[] | {number, headRefName, closes: (.closingIssuesReferences | length)}]' || exit 1
+    gh pr list -R "$repo" --state open --limit 1000 --json number,headRefName,closingIssuesReferences,isDraft \
+      --jq '[.[] | {number, headRefName, isDraft, closes: (.closingIssuesReferences | length)}]' || exit 1
     gh api "repos/${repo}/issues?state=open&per_page=100" --paginate \
       | jq -sc '[.[][] | select(.pull_request == null) | {number}]' || exit 1
     gh api "repos/${repo}/pulls?state=closed&per_page=100" --paginate \
@@ -232,6 +238,7 @@ print_capacity() {
     def list(f): if length == 0 then "none" else map(f) | join(", ") end;
     "lane capacity: \(.used)/\(.limit) used, \(.remaining) remaining",
     "implementation PRs: \(.implementation_prs | list("#\(.number) \(.headRefName)"))",
+    "landing PRs (not counted): \(.landing_prs | list("#\(.number) \(.headRefName)"))",
     "orphan claim branches: \(.orphan_claim_branches | list(.))",
     "stale claim branches: \(.stale_claim_branches | list(.))"'
 }
@@ -259,6 +266,11 @@ capacity_self_test() {
   expect "over the limit clamps remaining at 0" '.used == 4 and .remaining == 0' '[]' \
     '[{"number":1,"headRefName":"feat/1"},{"number":2,"headRefName":"fix/2"},{"number":3,"headRefName":"docs/3"},{"number":4,"headRefName":"chore/4"}]' \
     '[]' '[]'
+  expect "a ready Pull Request is landing, not counted; a draft counts" \
+    '.used == 1 and .implementation_prs == [{"number":10,"headRefName":"feat/1"}] and .landing_prs == [{"number":11,"headRefName":"fix/2"}]' \
+    '[{"name":"feat/1","sha":"a"},{"name":"fix/2","sha":"b"}]' \
+    '[{"number":10,"headRefName":"feat/1","closes":1,"isDraft":true},{"number":11,"headRefName":"fix/2","closes":1,"isDraft":false}]' \
+    '[{"number":1},{"number":2}]' '[]'
   expect "branch still at its merged head is stale" '.used == 0 and .stale_claim_branches == ["feat/1"]' \
     '[{"name":"feat/1","sha":"a"}]' '[]' '[{"number":1}]' '[{"headRefName":"feat/1","sha":"a"}]'
   expect "recreated branch past a merged head is live" '.used == 1 and .orphan_claim_branches == ["feat/1"]' \

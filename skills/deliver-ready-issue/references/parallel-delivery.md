@@ -28,8 +28,9 @@ stalled lane. It is not an orchestration-only role.
    ```
 
    New lanes fit within the remaining capacity of the three-lane limit, which
-   `capacity` counts: open implementation Pull Requests plus claim branches
-   without one, with stale claim branches reported but not counted. Do not
+   `capacity` counts: draft implementation Pull Requests plus claim branches
+   without one. Ready Pull Requests (landing) and stale claim branches are
+   reported but not counted. Do not
    count assigned or planned work as a running lane, and do not start a lane
    for an Issue whose check says `claimed`, even when your own login claimed
    it: only the matching `LANE_TOKEN` makes a lane yours (`mine`).
