@@ -377,6 +377,8 @@ snap() { # state head auto(true|false) checks merge-state
 }
 pending='[{"name":"ci","status":"IN_PROGRESS","conclusion":"","isRequired":true}]'
 red='[{"name":"ci","status":"COMPLETED","conclusion":"FAILURE","isRequired":true}]'
+optional_pending='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS","isRequired":true},{"name":"semver","status":"IN_PROGRESS","conclusion":"","isRequired":false}]'
+unprotected_pending='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS","isRequired":false},{"name":"semver","status":"IN_PROGRESS","conclusion":"","isRequired":false}]'
 optional_red='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS","isRequired":true},{"name":"fuzz","status":"COMPLETED","conclusion":"FAILURE","isRequired":false}]'
 lane_agent=a lane_token=lane-token-7
 lane() { # expected-exit dir args...; LANE_AGENT and LANE_TOKEN from lane_agent and lane_token
@@ -474,6 +476,16 @@ grep -q 'merge_method=squash' "$land/calls" || fail "self-test: land did not mer
 snap OPEN "$H" false "$red" BLOCKED > "$land/seq"
 run_land 5 --accept-failed ci
 if grep -q 'merge_method' "$land/calls"; then fail "self-test: land accepted a failed required check"; fi
+# Only required checks hold the merge; with none required, every check does.
+: > "$land/calls"
+{ snap OPEN "$H" false "$optional_pending" UNSTABLE; snap MERGED "$H" false '[]' MERGED; } > "$land/seq"
+run_land 0
+grep -q 'merge_method=squash' "$land/calls" || fail "self-test: land waited on an optional check after the required ones passed"
+printf '%s\n' "$out" | grep -q 'optional checks still run: semver' || fail "self-test: land did not name the pending optional check: $out"
+: > "$land/calls"
+snap OPEN "$H" false "$unprotected_pending" UNSTABLE > "$land/seq"
+run_land 6 --timeout-min 0
+if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged before CI finished on a branch with no required check"; fi
 snap OPEN "$H" false '[]' CLEAN | jq -c '.checksComplete = false' > "$land/seq"
 run_land 5
 if grep -q 'merge_method' "$land/calls"; then fail "self-test: land merged without seeing every check"; fi
